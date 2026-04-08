@@ -35,4 +35,6 @@
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 </head>
 <body>
+<?php include('sidebar.php'); ?>
 <div class="app-container">
+    <main class="main-9348">

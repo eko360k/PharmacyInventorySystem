@@ -37,24 +37,30 @@ body {
     background: #f4f6f9;
     color: var(--text-main-9348);
     -webkit-font-smoothing: antialiased;
-    overflow-x: hidden;
     line-height: 1.5;
 }
 
 /* App Container */
 .app-container {
     display: flex;
+    margin-left: 240px;
 }
 
 /* Sidebar */
 .sidebar {
+    position: fixed;
+    left: 0;
+    top: 0;
     width: 240px;
+    height: 100vh;
     background: #1e293b;
     color: white;
-    min-height: 100vh;
     padding: 20px;
     display: flex;
     flex-direction: column;
+    overflow-y: auto;
+    overflow-x: hidden;
+    z-index: 1000;
 }
 
 .brand {
