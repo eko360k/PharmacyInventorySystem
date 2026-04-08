@@ -178,5 +178,171 @@ class Functions extends Database
             [$medicine_id]
         );
     }
+
+    // ✅ AUTHENTICATION METHODS
+
+    // Check if email already exists
+    public function emailExists($email)
+    {
+        return $this->recordExists('users', 'email', $email);
+    }
+
+    // Validate password strength
+    public function validatePasswordStrength($password)
+    {
+        // Must contain at least one uppercase, one number, one special character
+        $has_upper = preg_match('/[A-Z]/', $password);
+        $has_lower = preg_match('/[a-z]/', $password);
+        $has_number = preg_match('/[0-9]/', $password);
+        $has_special = preg_match('/[!@#$%^&*()_+\-=\[\]{};\':"\\\\|,.<>\/?]/', $password);
+
+        return $has_upper && $has_lower && $has_number && $has_special;
+    }
+
+    // Register a new user
+    public function registerUser($full_name, $email, $password, $role = 'pharmacist')
+    {
+        try {
+            // Hash the password
+            $password_hash = password_hash($password, PASSWORD_BCRYPT);
+
+            // Prepare data
+            $data = [
+                'full_name' => $full_name,
+                'email' => $email,
+                'password_hash' => $password_hash,
+                'role' => $role
+            ];
+
+            // Insert user using safe method
+            $result = $this->insertSafe('users', $data);
+
+            if ($result['success']) {
+                return [
+                    'success' => true,
+                    'user_id' => $result['insert_id'],
+                    'message' => 'User registered successfully'
+                ];
+            } else {
+                // Check if it's a duplicate email error
+                if (isset($result['type']) && $result['type'] === 'duplicate') {
+                    return [
+                        'success' => false,
+                        'error' => 'Email already registered. Please try another email or login.'
+                    ];
+                }
+                return [
+                    'success' => false,
+                    'error' => $result['error'] ?? 'Failed to register user'
+                ];
+            }
+        } catch (Exception $e) {
+            return [
+                'success' => false,
+                'error' => 'Registration error: ' . $e->getMessage()
+            ];
+        }
+    }
+
+    // Login user
+    public function loginUser($email, $password)
+    {
+        try {
+            // Query user by email
+            $sql = "SELECT user_id, full_name, email, password_hash, role FROM users WHERE email = ? LIMIT 1";
+            $result = $this->query($sql, [$email]);
+
+            if ($this->count($result) === 0) {
+                return [
+                    'success' => false,
+                    'error' => 'No account found with this email address.'
+                ];
+            }
+
+            $user = $this->fetch($result);
+
+            // Verify password
+            if (!password_verify($password, $user['password_hash'])) {
+                return [
+                    'success' => false,
+                    'error' => 'Incorrect password. Please try again.'
+                ];
+            }
+
+            // Login successful
+            return [
+                'success' => true,
+                'user_id' => $user['user_id'],
+                'user_name' => $user['full_name'],
+                'user_email' => $user['email'],
+                'user_role' => $user['role']
+            ];
+
+        } catch (Exception $e) {
+            return [
+                'success' => false,
+                'error' => 'Login error: ' . $e->getMessage()
+            ];
+        }
+    }
+
+    // Get user by ID
+    public function getUserById($user_id)
+    {
+        $result = $this->query(
+            "SELECT user_id, full_name, email, role, created_at FROM users WHERE user_id = ?", 
+            [$user_id]
+        );
+        return $this->fetch($result);
+    }
+
+    // Update user profile
+    public function updateUserProfile($user_id, $full_name, $email)
+    {
+        $data = [
+            'full_name' => $full_name,
+            'email' => $email
+        ];
+        return $this->updateSafe('users', $data, 'user_id = ?', [$user_id]);
+    }
+
+    // Change user password
+    public function changePassword($user_id, $old_password, $new_password)
+    {
+        try {
+            // Get user's current password hash
+            $result = $this->query("SELECT password_hash FROM users WHERE user_id = ?", [$user_id]);
+            $user = $this->fetch($result);
+
+            if (!$user) {
+                return ['success' => false, 'error' => 'User not found'];
+            }
+
+            // Verify old password
+            if (!password_verify($old_password, $user['password_hash'])) {
+                return ['success' => false, 'error' => 'Current password is incorrect'];
+            }
+
+            // Hash new password
+            $new_hash = password_hash($new_password, PASSWORD_BCRYPT);
+
+            // Update password
+            $update_result = $this->updateSafe(
+                'users',
+                ['password_hash' => $new_hash],
+                'user_id = ?',
+                [$user_id]
+            );
+
+            if ($update_result['success']) {
+                return ['success' => true, 'message' => 'Password changed successfully'];
+            } else {
+                return ['success' => false, 'error' => $update_result['error']];
+            }
+
+        } catch (Exception $e) {
+            return ['success' => false, 'error' => $e->getMessage()];
+        }
+    }
 }
 ?>
