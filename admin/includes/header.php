@@ -1,6 +1,6 @@
 <?php
-require_once('functions.php');
-$fn = new Functions();
+    ob_start();
+    include('init.php');
 ?>
 <!DOCTYPE html>
 <html lang="en">
