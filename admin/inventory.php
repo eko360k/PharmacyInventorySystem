@@ -6,6 +6,7 @@ include('includes/sidebar.php');
 // Get filter parameters
 $filter_status = isset($_GET['status']) ? $_GET['status'] : 'all';
 $search = isset($_GET['search']) ? $_GET['search'] : '';
+$error_message = '';
 
 // Build query based on filters
 $query = "
@@ -42,6 +43,20 @@ $query .= " ORDER BY m.name ASC";
 $inventoryResult = $fn->query($query, $params);
 $inventoryItems = $fn->fetchAll($inventoryResult) ?? [];
 
+// Handle delete action
+if (isset($_GET['action']) && $_GET['action'] === 'delete' && isset($_GET['medicine_id'])) {
+    $medicine_id = intval($_GET['medicine_id']);
+    $deleteResult = $fn->deleteMedicine($medicine_id);
+    
+    if (is_array($deleteResult) && $deleteResult['success']) {
+        // Redirect to refresh the page
+        header('Location: inventory.php?status=' . $filter_status . '&message=deleted');
+        exit;
+    } else {
+        $error_message = (is_array($deleteResult) && isset($deleteResult['error'])) ? $deleteResult['error'] : 'Failed to delete medicine';
+    }
+}
+
 // Get inventory statistics
 $statsQuery = "
     SELECT 
@@ -69,6 +84,28 @@ $stats = $fn->fetch($statsResult) ?? ['total_items' => 0, 'in_stock' => 0, 'low_
                 </button>
             </div>
         </div>
+
+        <!-- Success Message -->
+        <?php if (isset($_GET['message']) && $_GET['message'] === 'deleted'): ?>
+            <div class="alert-9348 alert-success-9348" style="margin-bottom: 1.5rem;">
+                <i class="fas fa-check-circle"></i>
+                <div class="alert-message-9348">
+                    <strong>Success!</strong>
+                    <p>Medicine deleted successfully.</p>
+                </div>
+            </div>
+        <?php endif; ?>
+
+        <!-- Error Message -->
+        <?php if (!empty($error_message)): ?>
+            <div class="alert-9348 alert-error-9348" style="margin-bottom: 1.5rem;">
+                <i class="fas fa-exclamation-circle"></i>
+                <div class="alert-message-9348">
+                    <strong>Error!</strong>
+                    <p><?php echo htmlspecialchars($error_message); ?></p>
+                </div>
+            </div>
+        <?php endif; ?>
 
         <!-- Statistics Cards -->
         <div class="stats-grid-9348">
@@ -202,6 +239,8 @@ $stats = $fn->fetch($statsResult) ?? ['total_items' => 0, 'in_stock' => 0, 'low_
 
                                 $expiryDisplay = ($expiry !== 'N/A') ? date('M d, Y', strtotime($expiry)) : 'N/A';
 
+                                $medicine_id = $item['medicine_id'] ?? '';
+
                                 echo "<tr>
                                     <td class='medicine-name-9348'>
                                         <strong>$name</strong>
@@ -216,10 +255,10 @@ $stats = $fn->fetch($statsResult) ?? ['total_items' => 0, 'in_stock' => 0, 'low_
                                         <span class='status-pill-9348 $statusClass'>$statusText</span>
                                     </td>
                                     <td class='action-cell-9348'>
-                                        <button class='btn-icon-9348' title='Edit' onclick=\"alert('Edit functionality to be implemented')\">
+                                        <a href='editMedicine.php?id=$medicine_id' class='btn-icon-9348' title='Edit'>
                                             <i class='fas fa-edit'></i>
-                                        </button>
-                                        <button class='btn-icon-9348 btn-icon-danger-9348' title='Delete' onclick=\"if(confirm('Delete this item?')) { alert('Delete functionality to be implemented'); }\">
+                                        </a>
+                                        <button class='btn-icon-9348 btn-icon-danger-9348' title='Delete' onclick=\"if(confirm('Are you sure you want to delete this medicine? This action cannot be undone.')) { window.location.href='inventory.php?action=delete&medicine_id=$medicine_id&status=$filter_status'; }\">
                                             <i class='fas fa-trash'></i>
                                         </button>
                                     </td>
