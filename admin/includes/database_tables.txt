@@ -1,0 +1,108 @@
+CREATE DATABASE rosano;
+USE rosano;
+
+CREATE TABLE users (
+    user_id INT AUTO_INCREMENT PRIMARY KEY,
+    full_name VARCHAR(100) NOT NULL,
+    email VARCHAR(100) UNIQUE NOT NULL,
+    password_hash VARCHAR(255) NOT NULL,
+    role ENUM('admin', 'pharmacist', 'cashier') DEFAULT 'pharmacist',
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE suppliers (
+    supplier_id INT AUTO_INCREMENT PRIMARY KEY,
+    supplier_name VARCHAR(150) NOT NULL,
+    contact_person VARCHAR(100),
+    phone VARCHAR(20),
+    email VARCHAR(100),
+    address TEXT
+);
+
+CREATE TABLE medicines (
+    medicine_id INT AUTO_INCREMENT PRIMARY KEY,
+    name VARCHAR(150) NOT NULL,
+    sku VARCHAR(50) UNIQUE NOT NULL,
+    category VARCHAR(100),
+    description TEXT,
+    unit_price DECIMAL(10,2) NOT NULL,
+    supplier_id INT,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+
+    FOREIGN KEY (supplier_id) REFERENCES suppliers(supplier_id)
+        ON DELETE SET NULL
+);
+
+CREATE TABLE inventory (
+    inventory_id INT AUTO_INCREMENT PRIMARY KEY,
+    medicine_id INT NOT NULL,
+    quantity INT NOT NULL DEFAULT 0,
+    batch_number VARCHAR(50),
+    expiry_date DATE,
+    reorder_level INT DEFAULT 10,
+    last_updated TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+
+    FOREIGN KEY (medicine_id) REFERENCES medicines(medicine_id)
+        ON DELETE CASCADE
+);
+
+CREATE TABLE sales (
+    sale_id INT AUTO_INCREMENT PRIMARY KEY,
+    user_id INT NOT NULL,
+    total_amount DECIMAL(10,2) NOT NULL,
+    sale_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+
+    FOREIGN KEY (user_id) REFERENCES users(user_id)
+        ON DELETE CASCADE
+);
+
+CREATE TABLE sale_items (
+    sale_item_id INT AUTO_INCREMENT PRIMARY KEY,
+    sale_id INT NOT NULL,
+    medicine_id INT NOT NULL,
+    quantity INT NOT NULL,
+    unit_price DECIMAL(10,2) NOT NULL,
+    subtotal DECIMAL(10,2) GENERATED ALWAYS AS (quantity * unit_price) STORED,
+
+    FOREIGN KEY (sale_id) REFERENCES sales(sale_id)
+        ON DELETE CASCADE,
+
+    FOREIGN KEY (medicine_id) REFERENCES medicines(medicine_id)
+        ON DELETE CASCADE
+);
+
+CREATE TABLE alerts (
+    alert_id INT AUTO_INCREMENT PRIMARY KEY,
+    medicine_id INT NOT NULL,
+    alert_type ENUM('low_stock', 'expiry') NOT NULL,
+    message TEXT,
+    is_resolved BOOLEAN DEFAULT FALSE,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+
+    FOREIGN KEY (medicine_id) REFERENCES medicines(medicine_id)
+        ON DELETE CASCADE
+);
+
+CREATE TABLE stock_movements (
+    movement_id INT AUTO_INCREMENT PRIMARY KEY,
+    medicine_id INT NOT NULL,
+    change_type ENUM('purchase', 'sale', 'adjustment') NOT NULL,
+    quantity INT NOT NULL,
+    reference_id INT,
+    movement_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+
+    FOREIGN KEY (medicine_id) REFERENCES medicines(medicine_id)
+        ON DELETE CASCADE
+);
+
+CREATE TABLE stock_movements (
+    movement_id INT AUTO_INCREMENT PRIMARY KEY,
+    medicine_id INT NOT NULL,
+    change_type ENUM('purchase', 'sale', 'adjustment') NOT NULL,
+    quantity INT NOT NULL,
+    reference_id INT,
+    movement_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+
+    FOREIGN KEY (medicine_id) REFERENCES medicines(medicine_id)
+        ON DELETE CASCADE
+);

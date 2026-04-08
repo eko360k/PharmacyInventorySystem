@@ -1,0 +1,472 @@
+/* Inventory Page - Specific Styles */
+
+/* Page Content Container */
+.content-9348 {
+    padding: 2rem;
+    flex: 1;
+    overflow-y: auto;
+}
+
+/* Page Header Section */
+.page-intro-9348 {
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+    margin-bottom: 2rem;
+}
+
+@media (min-width: 640px) {
+    .page-intro-9348 {
+        flex-direction: row;
+        justify-content: space-between;
+        align-items: flex-end;
+    }
+}
+
+.page-title-9348 h1 {
+    font-size: 1.875rem;
+    font-weight: 700;
+    color: var(--text-main-9348);
+    letter-spacing: -0.02em;
+}
+
+.page-title-9348 p {
+    font-size: 0.875rem;
+    color: var(--text-muted-9348);
+    margin-top: 0.25rem;
+}
+
+/* Action Buttons */
+.actions-9348 {
+    display: flex;
+    gap: 0.75rem;
+    flex-wrap: wrap;
+}
+
+.btn-9348 {
+    padding: 0.625rem 1rem;
+    font-size: 0.875rem;
+    font-weight: 600;
+    border-radius: 6px;
+    border: 1px solid var(--border-strong-9348);
+    background: var(--surface-9348);
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    transition: var(--transition-9348);
+    color: var(--text-main-9348);
+    white-space: nowrap;
+}
+
+.btn-9348:hover {
+    background: var(--bg-9348);
+    transform: translateY(-1px);
+}
+
+.btn-primary-9348 {
+    background: var(--primary-9348);
+    color: white;
+    border-color: var(--primary-9348);
+}
+
+.btn-primary-9348:hover {
+    background: #4338ca;
+    box-shadow: 0 4px 12px rgba(79, 70, 229, 0.3);
+}
+
+/* Statistics Grid */
+.stats-grid-9348 {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 1.5rem;
+    margin-bottom: 2rem;
+}
+
+@media (min-width: 500px) {
+    .stats-grid-9348 { 
+        grid-template-columns: repeat(2, 1fr); 
+    }
+}
+
+@media (min-width: 900px) {
+    .stats-grid-9348 { 
+        grid-template-columns: repeat(4, 1fr); 
+    }
+}
+
+/* Stat Card */
+.stat-card-9348 {
+    background: var(--surface-9348);
+    padding: 1.5rem;
+    border-radius: var(--radius-9348);
+    border: 1px solid var(--border-9348);
+    box-shadow: var(--shadow-sm-9348);
+    transition: var(--transition-9348);
+}
+
+.stat-card-9348:hover {
+    transform: translateY(-2px);
+    box-shadow: var(--shadow-md-9348);
+}
+
+.stat-header-9348 {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    margin-bottom: 1rem;
+}
+
+.stat-label-9348 {
+    font-size: 0.8125rem;
+    font-weight: 600;
+    color: var(--text-muted-9348);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+}
+
+.stat-icon-9348 {
+    width: 36px;
+    height: 36px;
+    border-radius: 8px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: var(--primary-soft-9348);
+    color: var(--primary-9348);
+    font-size: 1.1rem;
+}
+
+.stat-value-9348 {
+    font-size: 2rem;
+    font-weight: 700;
+    color: var(--text-main-9348);
+    letter-spacing: -0.02em;
+    line-height: 1.2;
+}
+
+.stat-footer-9348 {
+    margin-top: 0.75rem;
+    font-size: 0.75rem;
+    font-weight: 500;
+}
+
+/* Inventory Controls */
+.inventory-controls-9348 {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 1.5rem;
+    margin-bottom: 2rem;
+}
+
+@media (min-width: 768px) {
+    .inventory-controls-9348 {
+        grid-template-columns: 2fr 1fr;
+    }
+}
+
+.control-group-9348 {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+}
+
+.control-label-9348 {
+    font-size: 0.875rem;
+    font-weight: 600;
+    color: var(--text-main-9348);
+}
+
+.select-input-9348 {
+    padding: 0.75rem;
+    border: 1px solid var(--border-9348);
+    border-radius: 6px;
+    background: var(--surface-9348);
+    color: var(--text-main-9348);
+    font-family: inherit;
+    cursor: pointer;
+    transition: var(--transition-9348);
+}
+
+.select-input-9348:focus {
+    outline: none;
+    border-color: var(--primary-9348);
+    box-shadow: 0 0 0 3px rgba(79, 70, 229, 0.1);
+}
+
+.select-input-9348:hover {
+    border-color: var(--primary-9348);
+}
+
+/* Inventory Card */
+.inventory-card-9348 {
+    background: var(--surface-9348);
+    border: 1px solid var(--border-9348);
+    border-radius: var(--radius-9348);
+    box-shadow: var(--shadow-sm-9348);
+    display: flex;
+    flex-direction: column;
+}
+
+.card-header-9348 {
+    padding: 1.5rem;
+    border-bottom: 1px solid var(--border-9348);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    background: linear-gradient(135deg, var(--bg-9348) 0%, transparent 100%);
+}
+
+.card-title-9348 {
+    font-size: 1.125rem;
+    font-weight: 700;
+    color: var(--text-main-9348);
+}
+
+/* Table - Responsive */
+.table-responsive-9348 {
+    overflow-x: auto;
+    flex: 1;
+}
+
+.data-table-9348 {
+    width: 100%;
+    border-collapse: collapse;
+    text-align: left;
+}
+
+.data-table-9348 th {
+    padding: 1rem 1.25rem;
+    background: #fafafa;
+    font-size: 0.75rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--text-muted-9348);
+    border-bottom: 2px solid var(--border-9348);
+    position: sticky;
+    top: 0;
+    z-index: 10;
+}
+
+.data-table-9348 td {
+    padding: 1.125rem 1.25rem;
+    font-size: 0.875rem;
+    border-bottom: 1px solid var(--border-9348);
+    color: var(--text-main-9348);
+}
+
+.data-table-9348 tr {
+    transition: var(--transition-9348);
+}
+
+.data-table-9348 tbody tr:hover {
+    background-color: #fafbfc;
+}
+
+.data-table-9348 tr:last-child td {
+    border-bottom: none;
+}
+
+/* Medicine Name */
+.medicine-name-9348 {
+    color: var(--primary-9348);
+    font-weight: 600;
+}
+
+/* Status Pills */
+.status-pill-9348 {
+    display: inline-flex;
+    align-items: center;
+    padding: 0.35rem 0.85rem;
+    border-radius: 50px;
+    font-size: 0.75rem;
+    font-weight: 600;
+    gap: 0.4rem;
+    white-space: nowrap;
+}
+
+.status-instock-9348 {
+    background-color: #dcfce7;
+    color: #166534;
+}
+
+.status-lowstock-9348 {
+    background-color: #fef3c7;
+    color: #854d0e;
+}
+
+.status-outofstock-9348 {
+    background-color: #fee2e2;
+    color: #991b1b;
+}
+
+.status-expired-9348 {
+    background-color: #f1f5f9;
+    color: #475569;
+}
+
+/* Action Cell */
+.action-cell-9348 {
+    display: flex;
+    gap: 0.5rem;
+    align-items: center;
+}
+
+.btn-icon-9348 {
+    width: 32px;
+    height: 32px;
+    border-radius: 6px;
+    border: 1px solid var(--border-9348);
+    background: var(--surface-9348);
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--text-muted-9348);
+    transition: var(--transition-9348);
+    font-size: 0.875rem;
+}
+
+.btn-icon-9348:hover {
+    background: var(--primary-soft-9348);
+    color: var(--primary-9348);
+    border-color: var(--primary-9348);
+    transform: scale(1.05);
+}
+
+.btn-icon-danger-9348:hover {
+    background: #fee2e2;
+    color: var(--danger-9348);
+    border-color: var(--danger-9348);
+}
+
+/* Empty State */
+.empty-state-9348 {
+    text-align: center;
+    padding: 3rem 1.5rem;
+}
+
+.empty-state-9348 .empty-icon-9348 {
+    font-size: 3rem;
+    color: var(--text-light-9348);
+    margin-bottom: 1rem;
+    opacity: 0.4;
+}
+
+.empty-state-9348 .empty-text-9348 {
+    color: var(--text-muted-9348);
+    font-size: 0.95rem;
+}
+
+/* Search Input */
+input[type="text"] {
+    padding: 0.75rem;
+    border: 1px solid var(--border-9348);
+    border-radius: 6px;
+    background: var(--surface-9348);
+    color: var(--text-main-9348);
+    font-family: inherit;
+    transition: var(--transition-9348);
+}
+
+input[type="text"]:focus {
+    outline: none;
+    border-color: var(--primary-9348);
+    box-shadow: 0 0 0 3px rgba(79, 70, 229, 0.1);
+}
+
+input[type="text"]::placeholder {
+    color: var(--text-light-9348);
+}
+
+/* Responsive adjustments */
+@media (max-width: 640px) {
+    .content-9348 {
+        padding: 1.5rem;
+    }
+
+    .data-table-9348 th {
+        padding: 0.75rem;
+        font-size: 0.65rem;
+    }
+
+    .data-table-9348 td {
+        padding: 0.85rem;
+        font-size: 0.8rem;
+    }
+
+    .page-title-9348 h1 {
+        font-size: 1.5rem;
+    }
+
+    .stat-value-9348 {
+        font-size: 1.5rem;
+    }
+
+    .btn-icon-9348 {
+        width: 28px;
+        height: 28px;
+        font-size: 0.75rem;
+    }
+
+    .inventory-controls-9348 {
+        grid-template-columns: 1fr;
+    }
+}
+
+/* Animation for table rows */
+@keyframes slideIn {
+    from {
+        opacity: 0;
+        transform: translateY(4px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+.data-table-9348 tbody tr {
+    animation: slideIn 0.3s ease-out;
+}
+
+/* Clever display enhancements */
+.data-table-9348 tbody tr:nth-child(odd) {
+    background-color: rgba(255, 255, 255, 0.5);
+}
+
+.stat-card-9348::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 3px;
+    background: linear-gradient(90deg, var(--primary-9348), transparent);
+    border-radius: 8px 8px 0 0;
+    opacity: 0;
+    transition: opacity 0.3s ease;
+}
+
+.stat-card-9348:hover::before {
+    opacity: 1;
+}
+
+/* Loading skeleton effect (optional) */
+@keyframes shimmer {
+    0% {
+        background-position: -1000px 0;
+    }
+    100% {
+        background-position: 1000px 0;
+    }
+}
+
+/* Gradient text for important values */
+.stat-value-9348 {
+    background: linear-gradient(135deg, var(--text-main-9348) 0%, var(--primary-9348) 100%);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+}
