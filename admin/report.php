@@ -236,21 +236,101 @@ $allInventory = $fn->fetchAll($inventoryResult) ?: [];
     const exportBtn = document.getElementById('export-trigger-9348');
     
     if (exportBtn) {
-        exportBtn.addEventListener('click', () => {
+        exportBtn.addEventListener('click', async () => {
             const originalContent = exportBtn.innerHTML;
-            exportBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Generating...';
-            exportBtn.disabled = true;
-            exportBtn.style.opacity = '0.7';
+            const originalDisabled = exportBtn.disabled;
+            
+            try {
+                // Show loading state
+                exportBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Generating Report...';
+                exportBtn.disabled = true;
+                exportBtn.style.opacity = '0.7';
 
-            setTimeout(() => {
-                exportBtn.innerHTML = '<i class="fas fa-check"></i> Ready to Export';
+                // Send request to generate report
+                const response = await fetch('generate-report.php', {
+                    method: 'GET',
+                    headers: {
+                        'Accept': 'text/plain'
+                    },
+                    credentials: 'include'  // Include session cookies
+                });
+
+                // Check if response is ok
+                if (!response.ok) {
+                    const errorText = await response.text();
+                    throw new Error(`Server error (${response.status}): ${errorText}`);
+                }
+
+                // Get the Content-Type to verify it's a text file
+                const contentType = response.headers.get('content-type');
+                if (!contentType || !contentType.includes('text/plain')) {
+                    const bodyText = await response.text();
+                    throw new Error(`Invalid response type. Expected text/plain, got ${contentType}. Response: ${bodyText.substring(0, 200)}`);
+                }
+
+                // Get the file content as blob
+                const blob = await response.blob();
                 
+                if (blob.size === 0) {
+                    throw new Error('Generated file is empty');
+                }
+
+                // Create a temporary download link
+                const downloadUrl = window.URL.createObjectURL(blob);
+                const link = document.createElement('a');
+                link.href = downloadUrl;
+                
+                // Extract filename from Content-Disposition header
+                const contentDisposition = response.headers.get('content-disposition');
+                let filename = 'Pharmacy_Report_' + new Date().toISOString().slice(0, 19).replace(/T/, '_').replace(/:/g, '-') + '.txt';
+                
+                if (contentDisposition && contentDisposition.includes('filename')) {
+                    const filenameMatch = contentDisposition.match(/filename="?([^"]+)"?/);
+                    if (filenameMatch && filenameMatch[1]) {
+                        filename = filenameMatch[1];
+                    }
+                }
+                
+                link.download = filename;
+                document.body.appendChild(link);
+                link.click();
+                document.body.removeChild(link);
+                
+                // Clean up object URL after a delay
+                setTimeout(() => {
+                    window.URL.revokeObjectURL(downloadUrl);
+                }, 100);
+
+                // Show success message
+                exportBtn.innerHTML = '<i class="fas fa-check-circle"></i> Export Successful!';
+                
+                // Reset button after 3 seconds
                 setTimeout(() => {
                     exportBtn.innerHTML = originalContent;
-                    exportBtn.disabled = false;
+                    exportBtn.disabled = originalDisabled;
                     exportBtn.style.opacity = '1';
-                }, 2000);
-            }, 1500);
+                }, 3000);
+
+            } catch (error) {
+                console.error('Export error:', error);
+                exportBtn.innerHTML = '<i class="fas fa-exclamation-circle"></i> Export Failed!';
+                exportBtn.style.color = 'var(--danger-9348)';
+                
+                // Log detailed error for debugging
+                console.error('Full error details:', {
+                    message: error.message,
+                    stack: error.stack,
+                    timestamp: new Date().toISOString()
+                });
+                
+                // Reset after 3 seconds
+                setTimeout(() => {
+                    exportBtn.innerHTML = originalContent;
+                    exportBtn.disabled = originalDisabled;
+                    exportBtn.style.opacity = '1';
+                    exportBtn.style.color = '';
+                }, 3000);
+            }
         });
     }
 })();
