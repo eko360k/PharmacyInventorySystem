@@ -171,7 +171,7 @@ class Functions extends Database
     // ✅ Update inventory expiry date
     public function updateExpiryDate($medicine_id, $expiry_date)
     {
-        return $this->update(
+        return $this->updateSafe(
             'inventory', 
             ['expiry_date' => $expiry_date], 
             'medicine_id = ?', 
@@ -917,7 +917,7 @@ class Functions extends Database
     }
 
     // ✅ RECORD RESTOCK (Log restock to dedicated restocks table)
-    public function recordRestock($medicine_id, $quantity_restocked, $previous_quantity, $new_quantity, $user_id = null, $notes = null)
+    public function recordRestock($medicine_id, $quantity_restocked, $previous_quantity, $new_quantity, $user_id = null, $notes = null, $expiry_date = null)
     {
         try {
             $data = [
@@ -928,6 +928,11 @@ class Functions extends Database
                 'restocked_by' => $user_id,
                 'notes' => $notes
             ];
+            
+            // Add expiry date if provided
+            if ($expiry_date !== null && !empty($expiry_date)) {
+                $data['expiry_date_restocked'] = $expiry_date;
+            }
             
             return $this->insertSafe('restocks', $data);
         } catch (Exception $e) {
@@ -947,7 +952,7 @@ class Functions extends Database
 
         $sql = "SELECT r.restock_id, r.medicine_id, m.name as medicine_name, m.sku, 
                 r.quantity_restocked, r.previous_quantity, r.new_quantity, 
-                r.restock_date, u.full_name as restocked_by
+                r.expiry_date_restocked, r.restock_date, u.full_name as restocked_by
                 FROM restocks r
                 JOIN medicines m ON r.medicine_id = m.medicine_id
                 LEFT JOIN users u ON r.restocked_by = u.user_id
@@ -973,6 +978,204 @@ class Functions extends Database
                 AND MONTH(restock_date) = ?";
         $result = $this->query($sql, [$year, $month]);
         return $this->fetch($result);
+    }
+
+    // ============================================
+    // ✅ BATCH INVENTORY TRACKING METHODS
+    // ============================================
+
+    // ✅ CREATE BATCH RECORD (called after restock)
+    public function createBatch($medicine_id, $quantity, $expiry_date, $restock_id = null, $notes = null)
+    {
+        try {
+            $data = [
+                'medicine_id' => $medicine_id,
+                'restock_id' => $restock_id,
+                'batch_quantity' => $quantity,
+                'original_quantity' => $quantity,
+                'expiry_date' => $expiry_date,
+                'batch_created_date' => date('Y-m-d'),
+                'batch_status' => 'active',
+                'notes' => $notes
+            ];
+
+            return $this->insertSafe('batches_inventory', $data);
+        } catch (Exception $e) {
+            return ['success' => false, 'error' => $e->getMessage()];
+        }
+    }
+
+    // ✅ GET ALL BATCHES FOR A MEDICINE
+    public function getBatchesForMedicine($medicine_id)
+    {
+        $sql = "SELECT * FROM v_inventory_by_batch 
+                WHERE medicine_id = ? 
+                ORDER BY expiry_date ASC";
+        return $this->query($sql, [$medicine_id]);
+    }
+
+    // ✅ GET TOTAL INVENTORY FOR MEDICINE (combines all active batches)
+    public function getMedicineTotalInventory($medicine_id)
+    {
+        $sql = "SELECT 
+                COALESCE(SUM(CASE WHEN batch_status != 'sold_out' THEN batch_quantity ELSE 0 END), 0) as total_quantity,
+                COALESCE(COUNT(CASE WHEN batch_status = 'active' THEN 1 END), 0) as active_batches,
+                MIN(expiry_date) as earliest_expiry_date
+                FROM batches_inventory
+                WHERE medicine_id = ?";
+        $result = $this->query($sql, [$medicine_id]);
+        $row = $this->fetch($result);
+        
+        return [
+            'total_quantity' => $row['total_quantity'] ?? 0,
+            'active_batches' => $row['active_batches'] ?? 0,
+            'earliest_expiry_date' => $row['earliest_expiry_date'] ?? null
+        ];
+    }
+
+    // ✅ GET ALL EXPIRING BATCHES (≤30 days or already expired with status tracking)
+    public function getExpiringBatches()
+    {
+        $sql = "SELECT * FROM v_expiring_batches_alert ORDER BY days_to_expiry ASC";
+        return $this->query($sql);
+    }
+
+    // ✅ GET EXPIRED BATCHES (0+ days overdue) - All expired items needing removal
+    public function getOverexpiredBatches()
+    {
+        $sql = "SELECT b.*, m.name as medicine_name, m.sku,
+                DATEDIFF(CURDATE(), b.expiry_date) as days_overdue
+                FROM batches_inventory b
+                JOIN medicines m ON b.medicine_id = m.medicine_id
+                WHERE DATEDIFF(CURDATE(), b.expiry_date) >= 0
+                AND b.batch_status != 'sold_out'
+                ORDER BY b.expiry_date ASC";
+        return $this->query($sql);
+    }
+
+    // ✅ GET BATCH EXPIRY STATUS for a specific batch
+    public function getBatchExpiryStatus($batch_id)
+    {
+        $sql = "SELECT 
+                batch_id,
+                medicine_id,
+                batch_quantity,
+                expiry_date,
+                DATEDIFF(expiry_date, CURDATE()) as days_to_expiry,
+                CASE 
+                    WHEN DATEDIFF(expiry_date, CURDATE()) <= 0 THEN 'EXPIRED'
+                    WHEN DATEDIFF(expiry_date, CURDATE()) <= 300 THEN 'EXPIRING_SOON'
+                    ELSE 'GOOD'
+                END as expiry_status
+                FROM batches_inventory
+                WHERE batch_id = ?";
+        $result = $this->query($sql, [$batch_id]);
+        return $this->fetch($result);
+    }
+
+    // ✅ UPDATE BATCH STATUS
+    public function updateBatchStatus($batch_id, $status)
+    {
+        $valid_statuses = ['active', 'low_stock', 'expired', 'sold_out'];
+        if (!in_array($status, $valid_statuses)) {
+            return ['success' => false, 'error' => 'Invalid batch status'];
+        }
+
+        return $this->updateSafe(
+            'batches_inventory',
+            ['batch_status' => $status],
+            'batch_id = ?',
+            [$batch_id]
+        );
+    }
+
+    // ✅ REDUCE BATCH QUANTITY (when items are sold from this batch)
+    public function reduceBatchQuantity($batch_id, $quantity_sold)
+    {
+        try {
+            // Get current batch
+            $sql = "SELECT batch_quantity FROM batches_inventory WHERE batch_id = ?";
+            $result = $this->query($sql, [$batch_id]);
+            $batch = $this->fetch($result);
+
+            if (!$batch) {
+                return ['success' => false, 'error' => 'Batch not found'];
+            }
+
+            $new_quantity = max(0, $batch['batch_quantity'] - $quantity_sold);
+            
+            // Update batch quantity
+            $update_result = $this->updateSafe(
+                'batches_inventory',
+                ['batch_quantity' => $new_quantity],
+                'batch_id = ?',
+                [$batch_id]
+            );
+
+            if (!$update_result['success']) {
+                return $update_result;
+            }
+
+            // Auto-update batch status
+            $new_status = 'sold_out';
+            if ($new_quantity > 0) {
+                $new_status = 'active';
+            }
+
+            $this->updateSafe(
+                'batches_inventory',
+                ['batch_status' => $new_status],
+                'batch_id = ?',
+                [$batch_id]
+            );
+
+            return ['success' => true, 'new_quantity' => $new_quantity];
+        } catch (Exception $e) {
+            return ['success' => false, 'error' => $e->getMessage()];
+        }
+    }
+
+    // ✅ GET MEDICINE INVENTORY SUMMARY VIEW
+    public function getMedicineInventorySummary()
+    {
+        $sql = "SELECT * FROM v_medicine_total_inventory 
+                ORDER BY medicine_name ASC";
+        return $this->query($sql);
+    }
+
+    // ✅ GET INVENTORY BY BATCH VIEW (all batches)
+    public function getInventoryByBatch()
+    {
+        $sql = "SELECT * FROM v_inventory_by_batch 
+                WHERE batch_id IS NOT NULL
+                ORDER BY medicine_id, expiry_date ASC";
+        return $this->query($sql);
+    }
+
+    // ✅ GET CRITICAL ALERTS (expiring soon or overexpired)
+    public function getCriticalExpiryAlerts()
+    {
+        $sql = "SELECT 
+                b.batch_id,
+                b.medicine_id,
+                m.name as medicine_name,
+                m.sku,
+                b.batch_quantity,
+                b.expiry_date,
+                DATEDIFF(b.expiry_date, CURDATE()) as days_to_expiry,
+                CASE 
+                    WHEN DATEDIFF(b.expiry_date, CURDATE()) <= 0 THEN 'EXPIRED'
+                    WHEN DATEDIFF(b.expiry_date, CURDATE()) <= 300 THEN 'EXPIRING_SOON'
+                END as alert_level
+                FROM batches_inventory b
+                JOIN medicines m ON b.medicine_id = m.medicine_id
+                WHERE b.batch_status != 'sold_out'
+                AND (
+                    DATEDIFF(b.expiry_date, CURDATE()) <= 0 
+                    OR DATEDIFF(b.expiry_date, CURDATE()) <= 300
+                )
+                ORDER BY DATEDIFF(b.expiry_date, CURDATE()) ASC";
+        return $this->query($sql);
     }
 }
 ?>

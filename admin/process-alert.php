@@ -53,10 +53,16 @@ try {
 
         $medicine_id = intval($data['medicine_id']);
         $restock_quantity = intval($data['quantity']);
+        $expiry_date = isset($data['expiry_date']) ? trim($data['expiry_date']) : null;
 
         // Validate inputs
         if ($medicine_id <= 0 || $restock_quantity <= 0) {
             throw new Exception('Invalid medicine ID or quantity');
+        }
+
+        // Validate expiry date format
+        if ($expiry_date && !preg_match('/^\d{4}-\d{2}-\d{2}$/', $expiry_date)) {
+            throw new Exception('Invalid expiry date format. Use YYYY-MM-DD');
         }
 
         // Get medicine and verify it exists
@@ -75,11 +81,19 @@ try {
         $current_qty = intval($inventory['quantity']);
         $new_quantity = $current_qty + $restock_quantity;
 
-        // Update inventory in database
+        // Update inventory quantity in database
         $update_result = $fn->updateStock($medicine_id, $new_quantity);
 
         if (!$update_result || (is_array($update_result) && !$update_result['success'])) {
             throw new Exception('Failed to update inventory');
+        }
+
+        // Update expiry date if provided
+        if ($expiry_date) {
+            $expiry_result = $fn->updateExpiryDate($medicine_id, $expiry_date);
+            if (!$expiry_result || (is_array($expiry_result) && !$expiry_result['success'])) {
+                throw new Exception('Failed to update expiry date');
+            }
         }
 
         // Record stock movement for audit trail
@@ -94,7 +108,7 @@ try {
             throw new Exception('Failed to record stock movement');
         }
 
-        // ✅ RECORD RESTOCK IN DEDICATED RESTOCKS TABLE
+        // ✅ RECORD RESTOCK IN DEDICATED RESTOCKS TABLE with expiry date
         $user_id = $_SESSION['user_id'] ?? null;
         $restock_record = $fn->recordRestock(
             $medicine_id,
@@ -102,11 +116,26 @@ try {
             $current_qty,
             $new_quantity,
             $user_id,
-            null
+            null,
+            $expiry_date
         );
 
         if (!$restock_record || (is_array($restock_record) && !$restock_record['success'])) {
             throw new Exception('Failed to record restock: ' . (isset($restock_record['error']) ? $restock_record['error'] : 'Unknown error'));
+        }
+
+        // ✅ CREATE BATCH RECORD (for batch-level inventory tracking)
+        $restock_id = isset($restock_record['insert_id']) ? $restock_record['insert_id'] : null;
+        $batch_record = $fn->createBatch(
+            $medicine_id,
+            $restock_quantity,
+            $expiry_date,
+            $restock_id,
+            "Restocked by {$fn->getUserById($user_id)['full_name']}"
+        );
+
+        if (!$batch_record || (is_array($batch_record) && !$batch_record['success'])) {
+            throw new Exception('Failed to create batch record. Please contact admin.');
         }
 
         // Auto-resolve low stock alert if stock is now adequate

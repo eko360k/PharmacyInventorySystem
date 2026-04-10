@@ -32,6 +32,11 @@ $inventoryResult = $fn->query("
     LIMIT 10
 ");
 $allInventory = $fn->fetchAll($inventoryResult) ?: [];
+
+// ✅ GET RECENT RESTOCKS FOR THIS MONTH (From dedicated restocks table)
+$recentRestocksResult = $fn->getRestocksForMonth();
+$recentRestocks = $fn->fetchAll($recentRestocksResult) ?: [];
+$restockSummary = $fn->getRestockSummary() ?: ['total_restocks' => 0, 'total_qty_restocked' => 0];
 ?>
 
 <div class="main-9348">
@@ -221,6 +226,64 @@ $allInventory = $fn->fetchAll($inventoryResult) ?: [];
                                 }
                             } else {
                                 echo "<tr><td colspan=\"5\" style=\"text-align: center; color: var(--text-light-9348);\">No critical stock items</td></tr>";
+                            }
+                            ?>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- Recent Restocks Section -->
+            <div class="card-9348" style="grid-column: 1 / -1;">
+                <div class="card-header-9348">
+                    <h3 class="card-title-9348">Recent Restocks - <?php echo date('F Y'); ?></h3>
+                    <div style="font-size: 0.75rem; color: var(--text-muted-9348); font-weight: 500;">
+                        <?php echo $restockSummary['total_restocks'] ?? 0; ?> restocks | <?php echo $restockSummary['total_qty_restocked'] ?? 0; ?> units
+                    </div>
+                </div>
+                <div class="table-responsive-9348">
+                    <table class="data-table-9348">
+                        <thead>
+                            <tr>
+                                <th>Date & Time</th>
+                                <th>Medicine Name</th>
+                                <th>SKU</th>
+                                <th>Qty Restocked</th>
+                                <th>Expiry Date</th>
+                                <th>Current Stock</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <?php
+                            if (count($recentRestocks) > 0) {
+                                foreach ($recentRestocks as $restock) {
+                                    $datetime = date('M d, Y @ H:i', strtotime($restock['restock_date']));
+                                    $medicineName = $restock['medicine_name'] ?? 'N/A';
+                                    $sku = $restock['sku'] ?? 'N/A';
+                                    $restockQty = $restock['quantity_restocked'] ?? '0';
+                                    $expiryDate = $restock['expiry_date_restocked'] ?? 'N/A';
+                                    $currentStock = $restock['new_quantity'] ?? '0';
+                                    
+                                    // Format expiry date for display
+                                    $expiryDateFormatted = 'N/A';
+                                    if ($expiryDate && $expiryDate !== 'N/A') {
+                                        $expiryDateFormatted = date('M d, Y', strtotime($expiryDate));
+                                        $daysToExpiry = floor((strtotime($expiryDate) - time()) / (60*60*24));
+                                        $expiryBadgeClass = $daysToExpiry < 0 ? 'badge-danger-9348' : ($daysToExpiry <= 30 ? 'badge-warning-9348' : 'badge-success-9348');
+                                        $expiryDateFormatted = "<span class=\"badge-9348 {$expiryBadgeClass}\">{$expiryDateFormatted}</span>";
+                                    }
+                                    
+                                    echo "<tr>
+                                        <td>{$datetime}</td>
+                                        <td style=\"font-weight: 600;\">{$medicineName}</td>
+                                        <td>{$sku}</td>
+                                        <td><span class=\"badge-9348 badge-success-9348\">+{$restockQty}</span></td>
+                                        <td>{$expiryDateFormatted}</td>
+                                        <td>{$currentStock} units</td>
+                                    </tr>";
+                                }
+                            } else {
+                                echo "<tr><td colspan=\"6\" style=\"text-align: center; color: var(--text-light-9348);\">No restocks recorded this month</td></tr>";
                             }
                             ?>
                         </tbody>

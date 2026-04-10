@@ -5,56 +5,59 @@ $page_css = 'alerts.css';
 // Include header (which includes init.php and checks session)
 include('./includes/header.php');
 
-// ✅ GET CURRENT LOW STOCK MEDICINES (Real-time from database)
-// This fetches items directly from inventory where quantity <= reorder_level
+// ✅ GET CURRENT LOW STOCK MEDICINES (Using batch-aware system)
+// Fetches medicines where total active batch quantity <= reorder_level
 $low_stock_result = $fn->getCurrentLowStockMedicines();
 $low_stock_medicines = $fn->fetchAll($low_stock_result) ?: [];
 
-// ✅ GET ALL ACTIVE ALERTS (including expiry)
-$alerts_result = $fn->getActiveAlerts();
-$all_alerts = $fn->fetchAll($alerts_result);
+// ✅ GET CRITICAL EXPIRY ALERTS (Two-tier system: EXPIRING_SOON and EXPIRED)
+// Uses new getCriticalExpiryAlerts() which queries batches instead of inventory table
+$critical_alerts_result = $fn->getCriticalExpiryAlerts();
+$critical_alerts = $fn->fetchAll($critical_alerts_result) ?: [];
 
-// Separate alerts by type (for expiry alerts)
-$expiry_alerts = [];
-foreach ($all_alerts as $alert) {
-    if ($alert['alert_type'] === 'expiry') {
-        $expiry_alerts[] = $alert;
-    }
-}
+// Separate alerts by type (EXPIRING_SOON vs EXPIRED)
+$expiring_soon_medicines = [];
+$expired_medicines = [];
 
-// ✅ PROCESS EXPIRY ALERTS
-$expiring_medicines = [];
-foreach ($expiry_alerts as $alert) {
-    $inventory = $fn->getInventoryByMedicineId($alert['medicine_id']);
-    $medicine = $fn->getMedicineById($alert['medicine_id']);
+foreach ($critical_alerts as $alert) {
+    $alert_data = [
+        'batch_id' => $alert['batch_id'] ?? null,
+        'medicine_id' => $alert['medicine_id'],
+        'name' => $alert['medicine_name'],
+        'sku' => $alert['sku'] ?? '',
+        'expiry_date' => $alert['expiry_date'],
+        'batch_quantity' => $alert['batch_quantity'],
+        'days_to_expiry' => $alert['days_to_expiry'],
+        'alert_level' => $alert['alert_level'] ?? 'EXPIRED'
+    ];
     
-    if ($inventory && $medicine) {
-        $days_to_expiry = $fn->daysToExpiry($inventory['expiry_date']);
-        
-        $expiring_medicines[] = [
-            'alert_id' => $alert['alert_id'],
-            'medicine_id' => $alert['medicine_id'],
-            'name' => $medicine['name'],
-            'sku' => $medicine['sku'],
-            'expiry_date' => $inventory['expiry_date'],
-            'days_remaining' => $days_to_expiry,
-            'message' => $alert['message'],
-            'created_at' => $alert['created_at']
-        ];
+    if ($alert['alert_level'] === 'EXPIRED') {
+        $expired_medicines[] = $alert_data;
+    } else {
+        $expiring_soon_medicines[] = $alert_data;
     }
 }
 
-// ✅ SORT LOW STOCK MEDICINES BY URGENCY
+// ✅ SORT ALERTS BY URGENCY
+// Low stock: Sort by stock percentage (lowest first)
 usort($low_stock_medicines, function($a, $b) {
     $a_percent = ($a['quantity'] / $a['reorder_level']) * 100;
     $b_percent = ($b['quantity'] / $b['reorder_level']) * 100;
     return $a_percent <=> $b_percent;
 });
 
-// ✅ SORT EXPIRING MEDICINES BY URGENCY
-usort($expiring_medicines, function($a, $b) {
-    return $a['days_remaining'] <=> $b['days_remaining'];
+// Expiring soon: Sort by days to expiry (soonest first)
+usort($expiring_soon_medicines, function($a, $b) {
+    return $a['days_to_expiry'] <=> $b['days_to_expiry'];
 });
+
+// Expired: Sort by days overdue (oldest first)
+usort($expired_medicines, function($a, $b) {
+    return $a['days_to_expiry'] <=> $b['days_to_expiry'];
+});
+
+// Combine for total count
+$all_expiring_medicines = array_merge($expiring_soon_medicines, $expired_medicines);
 ?>
 
 <div class="content-9348">
@@ -80,11 +83,21 @@ usort($expiring_medicines, function($a, $b) {
 
         <div class="stat-card-9348">
             <div class="stat-icon-9348" style="background: #fef3c7; color: var(--warning-9348);">
-                <i class="fas fa-calendar-times"></i>
+                <i class="fas fa-hourglass-start"></i>
             </div>
             <div class="stat-info-9348">
-                <h4><?php echo count($expiring_medicines); ?></h4>
-                <p>Expiring Soon</p>
+                <h4><?php echo count($expiring_soon_medicines); ?></h4>
+                <p>Expiring Soon (0-300 days)</p>
+            </div>
+        </div>
+
+        <div class="stat-card-9348">
+            <div class="stat-icon-9348" style="background: #fee2e2; color: var(--danger-9348);">
+                <i class="fas fa-skull-crossbones"></i>
+            </div>
+            <div class="stat-info-9348">
+                <h4><?php echo count($expired_medicines); ?></h4>
+                <p>Already Expired</p>
             </div>
         </div>
 
@@ -93,7 +106,7 @@ usort($expiring_medicines, function($a, $b) {
                 <i class="fas fa-check-circle"></i>
             </div>
             <div class="stat-info-9348">
-                <h4><?php echo count($low_stock_medicines) + count($expiring_medicines); ?></h4>
+                <h4><?php echo count($low_stock_medicines) + count($all_expiring_medicines); ?></h4>
                 <p>Total Alerts</p>
             </div>
         </div>
@@ -171,22 +184,23 @@ usort($expiring_medicines, function($a, $b) {
         <?php endif; ?>
     </div>
 
-    <!-- Expiry Alerts Section -->
+    <!-- Expiry Alerts Section: EXPIRING SOON -->
     <div class="alert-section-9348">
         <div class="section-header-9348">
             <div class="section-title-9348">
-                <i class="fas fa-hourglass-end expiry-icon-9348"></i>
-                <h2>Expiring Medicines</h2>
+                <i class="fas fa-hourglass-start expiry-icon-9348" style="color: var(--warning-9348);"></i>
+                <h2>Expiring Soon (0-300 days remaining)</h2>
             </div>
         </div>
 
-        <?php if (count($expiring_medicines) > 0): ?>
+        <?php if (count($expiring_soon_medicines) > 0): ?>
             <div class="table-container-9348">
                 <table class="alert-table-9348">
                     <thead>
                         <tr>
                             <th>Medicine</th>
                             <th>SKU</th>
+                            <th>Batch Qty</th>
                             <th>Expiry Date</th>
                             <th>Days Remaining</th>
                             <th>Status</th>
@@ -194,12 +208,12 @@ usort($expiring_medicines, function($a, $b) {
                         </tr>
                     </thead>
                     <tbody>
-                        <?php foreach ($expiring_medicines as $medicine): ?>
+                        <?php foreach ($expiring_soon_medicines as $medicine): ?>
                             <?php 
-                            $days = $medicine['days_remaining'];
-                            $is_critical = $days <= 7;
-                            $expiry_class = $days <= 0 ? 'critical-9348' : ($is_critical ? 'badge-danger-9348' : 'badge-warning-9348');
-                            $expiry_label = $days <= 0 ? 'EXPIRED' : ($days <= 7 ? 'CRITICAL' : 'CAUTION');
+                            $days = $medicine['days_to_expiry'];
+                            $is_critical = $days <= 30;
+                            $expiry_class = $is_critical ? 'badge-danger-9348' : 'badge-warning-9348';
+                            $expiry_label = $is_critical ? 'URGENT' : 'CAUTION';
                             ?>
                             <tr>
                                 <td>
@@ -215,19 +229,24 @@ usort($expiring_medicines, function($a, $b) {
                                 </td>
                                 <td><?php echo htmlspecialchars($medicine['sku']); ?></td>
                                 <td>
+                                    <span class="stock-badge-9348 badge-info-9348">
+                                        <?php echo $medicine['batch_quantity']; ?> units
+                                    </span>
+                                </td>
+                                <td>
                                     <span class="expiry-date-9348">
                                         <?php echo date('M d, Y', strtotime($medicine['expiry_date'])); ?>
                                     </span>
                                 </td>
                                 <td>
-                                    <span class="days-remaining-9348 <?php echo $days <= 0 ? 'critical-9348' : ''; ?>">
+                                    <span class="days-remaining-9348">
                                         <?php 
-                                        if ($days <= 0) {
-                                            echo 'EXPIRED';
-                                        } elseif ($days == 1) {
-                                            echo '1 day';
+                                        if ($days == 1) {
+                                            echo '<strong>1 day</strong>';
+                                        } elseif ($days <= 0) {
+                                            echo '<strong>' . abs($days) . ' days ago</strong>';
                                         } else {
-                                            echo $days . ' days';
+                                            echo '<strong>' . $days . ' days</strong>';
                                         }
                                         ?>
                                     </span>
@@ -238,8 +257,90 @@ usort($expiring_medicines, function($a, $b) {
                                     </span>
                                 </td>
                                 <td>
-                                    <button class="restock-btn-9348" onclick="window.resolveAlert(<?php echo $medicine['alert_id']; ?>)">
-                                        <i class="fas fa-check"></i> Resolve
+                                    <button class="restock-btn-9348" onclick="window.restockMedicine(<?php echo $medicine['medicine_id']; ?>, '<?php echo htmlspecialchars($medicine['name']); ?>')">
+                                        <i class="fas fa-redo"></i> Restock
+                                    </button>
+                                </td>
+                            </tr>
+                        <?php endforeach; ?>
+                    </tbody>
+                </table>
+            </div>
+        <?php else: ?>
+            <div style="text-align: center; padding: 2rem; color: var(--text-muted-9348);">
+                <i class="fas fa-check-circle" style="font-size: 2.5rem; margin-bottom: 1rem; color: var(--success-9348);"></i>
+                <p>Great! No medicines expiring within 300 days.</p>
+            </div>
+        <?php endif; ?>
+    </div>
+
+    <!-- Expiry Alerts Section: ALREADY EXPIRED -->
+    <div class="alert-section-9348">
+        <div class="section-header-9348">
+            <div class="section-title-9348">
+                <i class="fas fa-skull-crossbones expiry-icon-9348" style="color: var(--danger-9348);"></i>
+                <h2>Already Expired (0+ days overdue) - MUST REMOVE</h2>
+            </div>
+        </div>
+
+        <?php if (count($expired_medicines) > 0): ?>
+            <div class="table-container-9348">
+                <table class="alert-table-9348">
+                    <thead>
+                        <tr>
+                            <th>Medicine</th>
+                            <th>SKU</th>
+                            <th>Batch Qty</th>
+                            <th>Expired Date</th>
+                            <th>Days Overdue</th>
+                            <th>Status</th>
+                            <th>Action</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <?php foreach ($expired_medicines as $medicine): ?>
+                            <?php 
+                            $days_overdue = abs($medicine['days_to_expiry']);
+                            $is_critical_overdue = $days_overdue >= 300;
+                            $expiry_class = $is_critical_overdue ? 'critical-9348' : 'badge-danger-9348';
+                            $expiry_label = $is_critical_overdue ? 'CRITICAL (10+ months)' : 'EXPIRED';
+                            ?>
+                            <tr style="background-color: <?php echo $is_critical_overdue ? '#fee2e2' : 'transparent'; ?>;">
+                                <td>
+                                    <div class="medicine-name-9348">
+                                        <div class="med-avatar-9348">
+                                            <?php echo strtoupper(substr($medicine['name'], 0, 2)); ?>
+                                        </div>
+                                        <div>
+                                            <strong><?php echo htmlspecialchars($medicine['name']); ?></strong>
+                                            <p><?php echo htmlspecialchars($medicine['sku']); ?></p>
+                                        </div>
+                                    </div>
+                                </td>
+                                <td><?php echo htmlspecialchars($medicine['sku']); ?></td>
+                                <td>
+                                    <span class="stock-badge-9348 badge-danger-9348">
+                                        <?php echo $medicine['batch_quantity']; ?> units
+                                    </span>
+                                </td>
+                                <td>
+                                    <span class="expiry-date-9348" style="color: var(--danger-9348);">
+                                        <?php echo date('M d, Y', strtotime($medicine['expiry_date'])); ?>
+                                    </span>
+                                </td>
+                                <td>
+                                    <span class="days-remaining-9348" style="color: var(--danger-9348);">
+                                        <strong><?php echo $days_overdue; ?> days ago</strong>
+                                    </span>
+                                </td>
+                                <td>
+                                    <span class="stock-badge-9348 <?php echo $expiry_class; ?>">
+                                        <?php echo $expiry_label; ?>
+                                    </span>
+                                </td>
+                                <td>
+                                    <button class="restock-btn-9348" style="background-color: var(--danger-9348);" onclick="alert('This batch is expired and must be removed from inventory. Please contact supervisor.')">
+                                        <i class="fas fa-trash"></i> Remove
                                     </button>
                                 </td>
                             </tr>
@@ -250,7 +351,7 @@ usort($expiring_medicines, function($a, $b) {
         <?php else: ?>
             <div style="text-align: center; padding: 2rem; color: var(--text-muted-9348);">
                 <i class="fas fa-smile" style="font-size: 2.5rem; margin-bottom: 1rem; color: var(--success-9348);"></i>
-                <p>No expiring medicines. Everything looks good!</p>
+                <p>Excellent! No expired medicines in inventory.</p>
             </div>
         <?php endif; ?>
     </div>
@@ -271,7 +372,7 @@ usort($expiring_medicines, function($a, $b) {
     <div class="modal-9348" id="restock-modal">
         <div class="modal-header-9348">
             <h2>Restock Medicine</h2>
-            <button class="modal-close-9348" onclick="closeRestockModal()">
+            <button class="modal-close-9348" onclick="window.closeRestockModal()">
                 <i class="fas fa-times"></i>
             </button>
         </div>
@@ -281,10 +382,14 @@ usort($expiring_medicines, function($a, $b) {
                 <label for="restock-quantity">Quantity to Restock</label>
                 <input type="number" id="restock-quantity" placeholder="Enter quantity" min="1">
             </div>
+            <div class="form-group-9348">
+                <label for="restock-expiry">Expiry Date of This Batch</label>
+                <input type="date" id="restock-expiry" required>
+            </div>
         </div>
         <div class="modal-footer-9348">
-            <button class="btn-cancel-9348" onclick="closeRestockModal()">Cancel</button>
-            <button class="btn-confirm-9348" onclick="submitSingleRestock()">Restock</button>
+            <button class="btn-cancel-9348" onclick="window.closeRestockModal()">Cancel</button>
+            <button class="btn-confirm-9348" onclick="window.submitSingleRestock()">Restock</button>
         </div>
     </div>
 </div>
@@ -521,10 +626,16 @@ usort($expiring_medicines, function($a, $b) {
     // Submit single restock
     window.submitSingleRestock = async () => {
         const quantity = parseInt(document.getElementById('restock-quantity').value);
+        const expiryDate = document.getElementById('restock-expiry').value;
         const medicineId = window.currentRestockMedicineId;
         
         if (!quantity || quantity <= 0) {
             showToast('Invalid Input', 'Please enter a valid quantity', 'warning');
+            return;
+        }
+        
+        if (!expiryDate) {
+            showToast('Invalid Input', 'Please select an expiry date for this batch', 'warning');
             return;
         }
         
@@ -537,7 +648,8 @@ usort($expiring_medicines, function($a, $b) {
                 body: JSON.stringify({
                     action: 'restock_single',
                     medicine_id: medicineId,
-                    quantity: quantity
+                    quantity: quantity,
+                    expiry_date: expiryDate
                 }),
                 credentials: 'include'
             });
@@ -560,7 +672,7 @@ usort($expiring_medicines, function($a, $b) {
 
             // ✅ Check for success
             if (result.success === true) {
-                showToast('Success', 'Medicine restocked successfully', 'success');
+                showToast('Success', 'Medicine restocked successfully with expiry date: ' + expiryDate, 'success');
                 window.closeRestockModal();
                 // Auto-refresh after 1.5 seconds
                 setTimeout(() => {
