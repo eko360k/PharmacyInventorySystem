@@ -1,6 +1,10 @@
 /* Dashboard Page - Specific Styles */
 
 /* Dashboard Container */
+.app-container+.main-9348 {
+    padding: 2rem;
+}
+
 .dashboard-container-9348 {
     display: flex;
     min-height: 100vh;
@@ -103,6 +107,7 @@
     display: flex;
     flex-direction: column;
     min-width: 0;
+    /* padding: 2rem; */
 }
 
 /* Top Navigation */
@@ -199,6 +204,13 @@
 /* Dashboard Content Area */
 .content-area-9348 {
     padding: 2rem;
+    overflow-y: auto;
+}
+
+/* Page Content Container */
+.content-9348 {
+    padding: 2rem;
+    flex: 1;
     overflow-y: auto;
 }
 
