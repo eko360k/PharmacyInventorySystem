@@ -152,7 +152,7 @@ usort($expiring_medicines, function($a, $b) {
                             $stock_percent = ($medicine['quantity'] / $medicine['reorder_level']) * 100;
                             $is_critical = $stock_percent <= 25;
                             ?>
-                            <tr>
+                            <tr data-medicine-id="<?php echo $medicine['medicine_id']; ?>">
                                 <td>
                                     <div class="medicine-name-9348">
                                         <div class="med-avatar-9348">
@@ -179,7 +179,7 @@ usort($expiring_medicines, function($a, $b) {
                                     </div>
                                 </td>
                                 <td>
-                                    <button class="restock-btn-9348" onclick="window.restockMedicine(<?php echo $medicine['medicine_id']; ?>, 'low_stock')">
+                                    <button class="restock-btn-9348" onclick="window.restockMedicine(<?php echo $medicine['medicine_id']; ?>, '<?php echo htmlspecialchars($medicine['name']); ?>')">
                                         <i class="fas fa-redo"></i> Restock
                                     </button>
                                 </td>
@@ -296,7 +296,224 @@ usort($expiring_medicines, function($a, $b) {
     </div>
 </div>
 
+<!-- Single Restock Modal -->
+<div class="modal-overlay-9348" id="restock-modal-overlay">
+    <div class="modal-9348" id="restock-modal">
+        <div class="modal-header-9348">
+            <h2>Restock Medicine</h2>
+            <button class="modal-close-9348" onclick="closeRestockModal()">
+                <i class="fas fa-times"></i>
+            </button>
+        </div>
+        <div class="modal-body-9348">
+            <p id="medicine-name-display" style="font-weight: 600; color: var(--text-main-9348); margin-bottom: 1rem;"></p>
+            <div class="form-group-9348">
+                <label for="restock-quantity">Quantity to Restock</label>
+                <input type="number" id="restock-quantity" placeholder="Enter quantity" min="1">
+            </div>
+        </div>
+        <div class="modal-footer-9348">
+            <button class="btn-cancel-9348" onclick="closeRestockModal()">Cancel</button>
+            <button class="btn-confirm-9348" onclick="submitSingleRestock()">Restock</button>
+        </div>
+    </div>
+</div>
+
+<!-- Batch Restock Modal -->
+<div class="modal-overlay-9348" id="batch-modal-overlay">
+    <div class="modal-9348" id="batch-modal" style="max-width: 600px; max-height: 80vh; overflow-y: auto;">
+        <div class="modal-header-9348">
+            <h2>Restock All Low Stock Items</h2>
+            <button class="modal-close-9348" onclick="closeBatchModal()">
+                <i class="fas fa-times"></i>
+            </button>
+        </div>
+        <div class="modal-body-9348" id="batch-modal-body">
+            <!-- Items will be populated here -->
+        </div>
+        <div class="modal-footer-9348">
+            <button class="btn-cancel-9348" onclick="closeBatchModal()">Cancel</button>
+            <button class="btn-confirm-9348" onclick="submitBatchRestock()">Apply All Restocks</button>
+        </div>
+    </div>
+</div>
+
 <?php include('./includes/footer.php'); ?>
+
+<style>
+/* Modal Styling */
+.modal-overlay-9348 {
+    display: none;
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(0, 0, 0, 0.5);
+    z-index: 10000;
+    align-items: center;
+    justify-content: center;
+}
+
+.modal-overlay-9348.active-9348 {
+    display: flex;
+}
+
+.modal-9348 {
+    background: var(--surface-9348);
+    border-radius: 12px;
+    box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+    width: 90%;
+    max-width: 500px;
+    max-height: 90vh;
+    overflow-y: auto;
+    animation: slideUp 0.3s ease;
+}
+
+@keyframes slideUp {
+    from {
+        transform: translateY(20px);
+        opacity: 0;
+    }
+    to {
+        transform: translateY(0);
+        opacity: 1;
+    }
+}
+
+.modal-header-9348 {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 1.5rem;
+    border-bottom: 1px solid var(--border-9348);
+}
+
+.modal-header-9348 h2 {
+    margin: 0;
+    font-size: 1.25rem;
+    color: var(--text-main-9348);
+}
+
+.modal-close-9348 {
+    background: none;
+    border: none;
+    font-size: 1.5rem;
+    cursor: pointer;
+    color: var(--text-muted-9348);
+    transition: var(--transition-9348);
+}
+
+.modal-close-9348:hover {
+    color: var(--text-main-9348);
+}
+
+.modal-body-9348 {
+    padding: 1.5rem;
+}
+
+.form-group-9348 {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+    margin-bottom: 1rem;
+}
+
+.form-group-9348 label {
+    font-weight: 600;
+    color: var(--text-main-9348);
+    font-size: 0.9rem;
+}
+
+.form-group-9348 input {
+    padding: 0.75rem;
+    border: 1px solid var(--border-9348);
+    border-radius: 6px;
+    font-size: 1rem;
+    font-family: inherit;
+}
+
+.form-group-9348 input:focus {
+    outline: none;
+    border-color: var(--primary-9348);
+    box-shadow: 0 0 0 3px rgba(79, 70, 229, 0.1);
+}
+
+.batch-item-9348 {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    padding: 1rem;
+    background: var(--bg-9348);
+    border-radius: 8px;
+    margin-bottom: 1rem;
+}
+
+.batch-item-info-9348 {
+    flex: 1;
+    min-width: 0;
+}
+
+.batch-item-name-9348 {
+    font-weight: 600;
+    color: var(--text-main-9348);
+}
+
+.batch-item-details-9348 {
+    font-size: 0.8rem;
+    color: var(--text-light-9348);
+    margin-top: 0.25rem;
+}
+
+.batch-item-input-9348 {
+    width: 100px;
+}
+
+.batch-item-input-9348 input {
+    padding: 0.5rem;
+    border: 1px solid var(--border-9348);
+    border-radius: 6px;
+    width: 100%;
+}
+
+.modal-footer-9348 {
+    display: flex;
+    gap: 1rem;
+    padding: 1.5rem;
+    border-top: 1px solid var(--border-9348);
+    justify-content: flex-end;
+}
+
+.btn-cancel-9348,
+.btn-confirm-9348 {
+    padding: 0.75rem 1.5rem;
+    border: none;
+    border-radius: 6px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: var(--transition-9348);
+    font-size: 0.9rem;
+}
+
+.btn-cancel-9348 {
+    background: var(--bg-9348);
+    color: var(--text-main-9348);
+    border: 1px solid var(--border-9348);
+}
+
+.btn-cancel-9348:hover {
+    background: var(--border-9348);
+}
+
+.btn-confirm-9348 {
+    background: var(--primary-9348);
+    color: white;
+}
+
+.btn-confirm-9348:hover {
+    background: #4338ca;
+}
+</style>
 
 <script>
 (function() {
@@ -329,64 +546,36 @@ usort($expiring_medicines, function($a, $b) {
         setTimeout(() => toast.classList.remove('active-9348'), 3000);
     }
 
-    // Restock Medicine - Update inventory and resolve alert
-    window.restockMedicine = async (medicineId, alertType) => {
-        try {
-            const response = await fetch('process-alert.php', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json'
-                },
-                body: JSON.stringify({
-                    action: 'restock',
-                    medicine_id: medicineId,
-                    alert_type: alertType
-                })
-            });
-
-            const result = await response.json();
-
-            if (result.success) {
-                showToast('Restock Initiated', `Medicine restocking order created`, 'success');
-                setTimeout(() => location.reload(), 1500);
-            } else {
-                showToast('Error', result.error || 'Failed to process restock', 'error');
-            }
-        } catch (error) {
-            showToast('Error', error.message, 'error');
-        }
+    // Restock Medicine - Show modal for quantity input
+    window.restockMedicine = (medicineId, medicineName) => {
+        const medicineNameDisplay = document.getElementById('medicine-name-display');
+        const quantityInput = document.getElementById('restock-quantity');
+        const modal = document.getElementById('restock-modal-overlay');
+        
+        medicineNameDisplay.textContent = `Restocking: ${medicineName}`;
+        quantityInput.value = '';
+        quantityInput.focus();
+        
+        // Store medicine ID for later use
+        window.currentRestockMedicineId = medicineId;
+        
+        modal.classList.add('active-9348');
     };
 
-    // Resolve Alert
-    window.resolveAlert = async (alertId) => {
-        try {
-            const response = await fetch('process-alert.php', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json'
-                },
-                body: JSON.stringify({
-                    action: 'resolve',
-                    alert_id: alertId
-                })
-            });
-
-            const result = await response.json();
-
-            if (result.success) {
-                showToast('Alert Resolved', 'Alert has been marked as resolved', 'success');
-                setTimeout(() => location.reload(), 1500);
-            } else {
-                showToast('Error', result.error || 'Failed to resolve alert', 'error');
-            }
-        } catch (error) {
-            showToast('Error', error.message, 'error');
-        }
+    // Close restock modal
+    window.closeRestockModal = () => {
+        document.getElementById('restock-modal-overlay').classList.remove('active-9348');
     };
 
-    // Restock All Medicines of a Type
-    window.restockAll = async (alertType) => {
-        const action = alertType === 'expiry' ? 'resolve_all' : 'restock_all';
+    // Submit single restock
+    window.submitSingleRestock = async () => {
+        const quantity = parseInt(document.getElementById('restock-quantity').value);
+        const medicineId = window.currentRestockMedicineId;
+        
+        if (!quantity || quantity <= 0) {
+            showToast('Invalid Input', 'Please enter a valid quantity', 'warning');
+            return;
+        }
         
         try {
             const response = await fetch('process-alert.php', {
@@ -395,21 +584,137 @@ usort($expiring_medicines, function($a, $b) {
                     'Content-Type': 'application/json'
                 },
                 body: JSON.stringify({
-                    action: action,
-                    alert_type: alertType
-                })
+                    action: 'restock_single',
+                    medicine_id: medicineId,
+                    quantity: quantity
+                }),
+                credentials: 'include'
             });
 
             const result = await response.json();
 
             if (result.success) {
-                const message = alertType === 'expiry' 
-                    ? 'All expiry alerts have been resolved' 
-                    : 'Restock orders created for all low stock items';
-                showToast('Batch Action Complete', message, 'success');
+                showToast('Success', 'Medicine restocked successfully', 'success');
+                window.closeRestockModal();
                 setTimeout(() => location.reload(), 1500);
             } else {
-                showToast('Error', result.error || 'Failed to process batch action', 'error');
+                showToast('Error', result.error || 'Failed to restock medicine', 'error');
+            }
+        } catch (error) {
+            showToast('Error', error.message, 'error');
+        }
+    };
+
+    // Restock All - Show modal with all low stock items
+    window.restockAll = async (alertType) => {
+        const batchModal = document.getElementById('batch-modal-overlay');
+        const batchBody = document.getElementById('batch-modal-body');
+        
+        // Get low stock items from DOM
+        let items = [];
+        
+        if (alertType === 'low_stock') {
+            // Get all low stock table rows
+            const rows = document.querySelectorAll('.alert-section-9348:first-of-type .alert-table-9348 tbody tr');
+            rows.forEach(row => {
+                const medicineCell = row.querySelector('.medicine-name-9348 strong');
+                const skuCell = row.querySelector('td:nth-child(2)');
+                const quantityCell = row.querySelector('td:nth-child(3)');
+                const medicineId = row.getAttribute('data-medicine-id');
+                
+                if (medicineCell && medicineId) {
+                    items.push({
+                        id: medicineId,
+                        name: medicineCell.textContent,
+                        sku: skuCell?.textContent || 'N/A',
+                        currentQty: quantityCell?.textContent?.match(/\d+/)?.[0] || '0'
+                    });
+                }
+            });
+        }
+        
+        if (items.length === 0) {
+            showToast('No Items', 'No items to restock', 'warning');
+            return;
+        }
+        
+        // Build batch modal content
+        let html = '<div style="display: flex; flex-direction: column; gap: 1rem;">';
+        items.forEach(item => {
+            html += `
+                <div class="batch-item-9348">
+                    <div class="batch-item-info-9348">
+                        <div class="batch-item-name-9348">${item.name}</div>
+                        <div class="batch-item-details-9348">SKU: ${item.sku} | Current: ${item.currentQty} units</div>
+                    </div>
+                    <div class="batch-item-input-9348">
+                        <input type="number" class="batch-qty-input" data-medicine-id="${item.id}" placeholder="Qty" min="1">
+                    </div>
+                </div>
+            `;
+        });
+        html += '</div>';
+        
+        batchBody.innerHTML = html;
+        window.batchRestockAlertType = alertType;
+        
+        batchModal.classList.add('active-9348');
+        
+        // Focus first input
+        document.querySelector('.batch-qty-input')?.focus();
+    };
+
+    // Close batch modal
+    window.closeBatchModal = () => {
+        document.getElementById('batch-modal-overlay').classList.remove('active-9348');
+    };
+
+    // Submit batch restock
+    window.submitBatchRestock = async () => {
+        const inputs = document.querySelectorAll('.batch-qty-input');
+        const items = [];
+        
+        let allValid = true;
+        inputs.forEach(input => {
+            const qty = parseInt(input.value);
+            if (!qty || qty <= 0) {
+                input.style.borderColor = 'var(--danger-9348)';
+                allValid = false;
+            } else {
+                input.style.borderColor = '';
+                items.push({
+                    medicine_id: input.getAttribute('data-medicine-id'),
+                    quantity: qty
+                });
+            }
+        });
+        
+        if (!allValid) {
+            showToast('Invalid Input', 'Please enter valid quantities for all items', 'warning');
+            return;
+        }
+        
+        try {
+            const response = await fetch('process-alert.php', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    action: 'restock_batch',
+                    items: items
+                }),
+                credentials: 'include'
+            });
+
+            const result = await response.json();
+
+            if (result.success) {
+                showToast('Success', `${result.updated_count || items.length} medicines restocked successfully`, 'success');
+                window.closeBatchModal();
+                setTimeout(() => location.reload(), 1500);
+            } else {
+                showToast('Error', result.error || 'Failed to process restock', 'error');
             }
         } catch (error) {
             showToast('Error', error.message, 'error');
