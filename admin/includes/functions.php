@@ -160,7 +160,7 @@ class Functions extends Database
     // ✅ Update inventory stock
     public function updateStock($medicine_id, $quantity)
     {
-        return $this->update(
+        return $this->updateSafe(
             'inventory', 
             ['quantity' => $quantity], 
             'medicine_id = ?', 
@@ -719,8 +719,8 @@ class Functions extends Database
         }
     }
 
-    // ✅ RECORD STOCK MOVEMENT
-    private function recordStockMovement($medicine_id, $change_type, $quantity, $reference_id = null)
+    // ✅ RECORD STOCK MOVEMENT (PUBLIC - called from process-alert.php)
+    public function recordStockMovement($medicine_id, $change_type, $quantity, $reference_id = null)
     {
         try {
             $movement_data = [
@@ -862,6 +862,117 @@ class Functions extends Database
         } catch (Exception $e) {
             return ['success' => false, 'error' => $e->getMessage()];
         }
+    }
+
+    // ✅ GET CURRENT LOW STOCK MEDICINES (Real-time from database)
+    public function getCurrentLowStockMedicines()
+    {
+        $sql = "SELECT m.medicine_id, m.name, m.sku, i.quantity, i.reorder_level, i.expiry_date
+                FROM inventory i
+                JOIN medicines m ON i.medicine_id = m.medicine_id
+                WHERE i.quantity <= i.reorder_level
+                ORDER BY (i.quantity / i.reorder_level) ASC";
+        return $this->query($sql);
+    }
+
+    // ✅ GET RECENT RESTOCKS FOR THE MONTH
+    public function getRecentRestocksForMonth($year = null, $month = null)
+    {
+        if (!$year) {
+            $year = date('Y');
+        }
+        if (!$month) {
+            $month = date('m');
+        }
+
+        $sql = "SELECT sm.movement_id, sm.medicine_id, sm.quantity as restock_qty, 
+                sm.movement_date, m.name as medicine_name, m.sku, i.quantity as current_stock
+                FROM stock_movements sm
+                JOIN medicines m ON sm.medicine_id = m.medicine_id
+                LEFT JOIN inventory i ON m.medicine_id = i.medicine_id
+                WHERE sm.change_type = 'purchase'
+                AND YEAR(sm.movement_date) = ?
+                AND MONTH(sm.movement_date) = ?
+                ORDER BY sm.movement_date DESC";
+        return $this->query($sql, [$year, $month]);
+    }
+
+    // ✅ GET MONTHLY RESTOCK SUMMARY
+    public function getMonthlyRestockSummary($year = null, $month = null)
+    {
+        if (!$year) {
+            $year = date('Y');
+        }
+        if (!$month) {
+            $month = date('m');
+        }
+
+        $sql = "SELECT COUNT(*) as total_restocks, SUM(quantity) as total_qty_restocked
+                FROM stock_movements
+                WHERE change_type = 'purchase'
+                AND YEAR(movement_date) = ?
+                AND MONTH(movement_date) = ?";
+        $result = $this->query($sql, [$year, $month]);
+        return $this->fetch($result);
+    }
+
+    // ✅ RECORD RESTOCK (Log restock to dedicated restocks table)
+    public function recordRestock($medicine_id, $quantity_restocked, $previous_quantity, $new_quantity, $user_id = null, $notes = null)
+    {
+        try {
+            $data = [
+                'medicine_id' => $medicine_id,
+                'quantity_restocked' => $quantity_restocked,
+                'previous_quantity' => $previous_quantity,
+                'new_quantity' => $new_quantity,
+                'restocked_by' => $user_id,
+                'notes' => $notes
+            ];
+            
+            return $this->insertSafe('restocks', $data);
+        } catch (Exception $e) {
+            return ['success' => false, 'error' => $e->getMessage()];
+        }
+    }
+
+    // ✅ GET RESTOCKS FOR A MONTH (From restocks table)
+    public function getRestocksForMonth($year = null, $month = null)
+    {
+        if (!$year) {
+            $year = date('Y');
+        }
+        if (!$month) {
+            $month = date('m');
+        }
+
+        $sql = "SELECT r.restock_id, r.medicine_id, m.name as medicine_name, m.sku, 
+                r.quantity_restocked, r.previous_quantity, r.new_quantity, 
+                r.restock_date, u.full_name as restocked_by
+                FROM restocks r
+                JOIN medicines m ON r.medicine_id = m.medicine_id
+                LEFT JOIN users u ON r.restocked_by = u.user_id
+                WHERE YEAR(r.restock_date) = ?
+                AND MONTH(r.restock_date) = ?
+                ORDER BY r.restock_date DESC";
+        return $this->query($sql, [$year, $month]);
+    }
+
+    // ✅ GET RESTOCK SUMMARY FOR MONTH
+    public function getRestockSummary($year = null, $month = null)
+    {
+        if (!$year) {
+            $year = date('Y');
+        }
+        if (!$month) {
+            $month = date('m');
+        }
+
+        $sql = "SELECT COUNT(*) as total_restocks, SUM(quantity_restocked) as total_qty_restocked
+                FROM restocks
+                WHERE YEAR(restock_date) = ?
+                AND MONTH(restock_date) = ?";
+        $result = $this->query($sql, [$year, $month]);
+        return $this->fetch($result);
     }
 }
 ?>

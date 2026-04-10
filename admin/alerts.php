@@ -5,46 +5,25 @@ $page_css = 'alerts.css';
 // Include header (which includes init.php and checks session)
 include('./includes/header.php');
 
-// Get all active alerts from database
+// ✅ GET CURRENT LOW STOCK MEDICINES (Real-time from database)
+// This fetches items directly from inventory where quantity <= reorder_level
+$low_stock_result = $fn->getCurrentLowStockMedicines();
+$low_stock_medicines = $fn->fetchAll($low_stock_result) ?: [];
+
+// ✅ GET ALL ACTIVE ALERTS (including expiry)
 $alerts_result = $fn->getActiveAlerts();
 $all_alerts = $fn->fetchAll($alerts_result);
 
-// Separate alerts by type
-$low_stock_alerts = [];
+// Separate alerts by type (for expiry alerts)
 $expiry_alerts = [];
-
 foreach ($all_alerts as $alert) {
-    if ($alert['alert_type'] === 'low_stock') {
-        $low_stock_alerts[] = $alert;
-    } elseif ($alert['alert_type'] === 'expiry') {
+    if ($alert['alert_type'] === 'expiry') {
         $expiry_alerts[] = $alert;
     }
 }
 
-// Get inventory data for better display
-$low_stock_medicines = [];
+// ✅ PROCESS EXPIRY ALERTS
 $expiring_medicines = [];
-
-// Process low stock alerts
-foreach ($low_stock_alerts as $alert) {
-    $inventory = $fn->getInventoryByMedicineId($alert['medicine_id']);
-    $medicine = $fn->getMedicineById($alert['medicine_id']);
-    
-    if ($inventory && $medicine) {
-        $low_stock_medicines[] = [
-            'alert_id' => $alert['alert_id'],
-            'medicine_id' => $alert['medicine_id'],
-            'name' => $medicine['name'],
-            'sku' => $medicine['sku'],
-            'quantity' => $inventory['quantity'],
-            'reorder_level' => $inventory['reorder_level'],
-            'message' => $alert['message'],
-            'created_at' => $alert['created_at']
-        ];
-    }
-}
-
-// Process expiry alerts
 foreach ($expiry_alerts as $alert) {
     $inventory = $fn->getInventoryByMedicineId($alert['medicine_id']);
     $medicine = $fn->getMedicineById($alert['medicine_id']);
@@ -65,13 +44,14 @@ foreach ($expiry_alerts as $alert) {
     }
 }
 
-// Sort by urgency
+// ✅ SORT LOW STOCK MEDICINES BY URGENCY
 usort($low_stock_medicines, function($a, $b) {
     $a_percent = ($a['quantity'] / $a['reorder_level']) * 100;
     $b_percent = ($b['quantity'] / $b['reorder_level']) * 100;
     return $a_percent <=> $b_percent;
 });
 
+// ✅ SORT EXPIRING MEDICINES BY URGENCY
 usort($expiring_medicines, function($a, $b) {
     return $a['days_remaining'] <=> $b['days_remaining'];
 });
@@ -126,11 +106,6 @@ usort($expiring_medicines, function($a, $b) {
                 <i class="fas fa-arrow-trending-down low-stock-icon-9348"></i>
                 <h2>Low Stock Medicines</h2>
             </div>
-            <?php if (count($low_stock_medicines) > 0): ?>
-                <button class="btn-restock-all-9348" onclick="window.restockAll('low_stock')">
-                    <i class="fas fa-truck"></i> Restock All
-                </button>
-            <?php endif; ?>
         </div>
 
         <?php if (count($low_stock_medicines) > 0): ?>
@@ -203,11 +178,6 @@ usort($expiring_medicines, function($a, $b) {
                 <i class="fas fa-hourglass-end expiry-icon-9348"></i>
                 <h2>Expiring Medicines</h2>
             </div>
-            <?php if (count($expiring_medicines) > 0): ?>
-                <button class="btn-restock-all-9348" onclick="window.restockAll('expiry')">
-                    <i class="fas fa-trash"></i> Mark All as Resolved
-                </button>
-            <?php endif; ?>
         </div>
 
         <?php if (count($expiring_medicines) > 0): ?>
@@ -315,25 +285,6 @@ usort($expiring_medicines, function($a, $b) {
         <div class="modal-footer-9348">
             <button class="btn-cancel-9348" onclick="closeRestockModal()">Cancel</button>
             <button class="btn-confirm-9348" onclick="submitSingleRestock()">Restock</button>
-        </div>
-    </div>
-</div>
-
-<!-- Batch Restock Modal -->
-<div class="modal-overlay-9348" id="batch-modal-overlay">
-    <div class="modal-9348" id="batch-modal" style="max-width: 600px; max-height: 80vh; overflow-y: auto;">
-        <div class="modal-header-9348">
-            <h2>Restock All Low Stock Items</h2>
-            <button class="modal-close-9348" onclick="closeBatchModal()">
-                <i class="fas fa-times"></i>
-            </button>
-        </div>
-        <div class="modal-body-9348" id="batch-modal-body">
-            <!-- Items will be populated here -->
-        </div>
-        <div class="modal-footer-9348">
-            <button class="btn-cancel-9348" onclick="closeBatchModal()">Cancel</button>
-            <button class="btn-confirm-9348" onclick="submitBatchRestock()">Apply All Restocks</button>
         </div>
     </div>
 </div>
@@ -591,133 +542,39 @@ usort($expiring_medicines, function($a, $b) {
                 credentials: 'include'
             });
 
-            const result = await response.json();
+            // ✅ Check if response is OK before parsing JSON
+            if (!response.ok) {
+                throw new Error(`Server error: ${response.status} ${response.statusText}`);
+            }
 
-            if (result.success) {
+            const responseText = await response.text();
+            
+            // ✅ Validate JSON response
+            let result;
+            try {
+                result = JSON.parse(responseText);
+            } catch (e) {
+                console.error('Invalid JSON response:', responseText);
+                throw new Error('Server returned invalid JSON: ' + responseText.substring(0, 100));
+            }
+
+            // ✅ Check for success
+            if (result.success === true) {
                 showToast('Success', 'Medicine restocked successfully', 'success');
                 window.closeRestockModal();
-                setTimeout(() => location.reload(), 1500);
+                // Auto-refresh after 1.5 seconds
+                setTimeout(() => {
+                    location.reload();
+                }, 1500);
             } else {
-                showToast('Error', result.error || 'Failed to restock medicine', 'error');
+                // Show the actual error from server
+                const errorMessage = result.error || result.message || 'Unknown error occurred';
+                showToast('Restock Failed', errorMessage, 'error');
+                console.error('Restock error:', result);
             }
         } catch (error) {
-            showToast('Error', error.message, 'error');
-        }
-    };
-
-    // Restock All - Show modal with all low stock items
-    window.restockAll = async (alertType) => {
-        const batchModal = document.getElementById('batch-modal-overlay');
-        const batchBody = document.getElementById('batch-modal-body');
-        
-        // Get low stock items from DOM
-        let items = [];
-        
-        if (alertType === 'low_stock') {
-            // Get all low stock table rows
-            const rows = document.querySelectorAll('.alert-section-9348:first-of-type .alert-table-9348 tbody tr');
-            rows.forEach(row => {
-                const medicineCell = row.querySelector('.medicine-name-9348 strong');
-                const skuCell = row.querySelector('td:nth-child(2)');
-                const quantityCell = row.querySelector('td:nth-child(3)');
-                const medicineId = row.getAttribute('data-medicine-id');
-                
-                if (medicineCell && medicineId) {
-                    items.push({
-                        id: medicineId,
-                        name: medicineCell.textContent,
-                        sku: skuCell?.textContent || 'N/A',
-                        currentQty: quantityCell?.textContent?.match(/\d+/)?.[0] || '0'
-                    });
-                }
-            });
-        }
-        
-        if (items.length === 0) {
-            showToast('No Items', 'No items to restock', 'warning');
-            return;
-        }
-        
-        // Build batch modal content
-        let html = '<div style="display: flex; flex-direction: column; gap: 1rem;">';
-        items.forEach(item => {
-            html += `
-                <div class="batch-item-9348">
-                    <div class="batch-item-info-9348">
-                        <div class="batch-item-name-9348">${item.name}</div>
-                        <div class="batch-item-details-9348">SKU: ${item.sku} | Current: ${item.currentQty} units</div>
-                    </div>
-                    <div class="batch-item-input-9348">
-                        <input type="number" class="batch-qty-input" data-medicine-id="${item.id}" placeholder="Qty" min="1">
-                    </div>
-                </div>
-            `;
-        });
-        html += '</div>';
-        
-        batchBody.innerHTML = html;
-        window.batchRestockAlertType = alertType;
-        
-        batchModal.classList.add('active-9348');
-        
-        // Focus first input
-        document.querySelector('.batch-qty-input')?.focus();
-    };
-
-    // Close batch modal
-    window.closeBatchModal = () => {
-        document.getElementById('batch-modal-overlay').classList.remove('active-9348');
-    };
-
-    // Submit batch restock
-    window.submitBatchRestock = async () => {
-        const inputs = document.querySelectorAll('.batch-qty-input');
-        const items = [];
-        
-        let allValid = true;
-        inputs.forEach(input => {
-            const qty = parseInt(input.value);
-            if (!qty || qty <= 0) {
-                input.style.borderColor = 'var(--danger-9348)';
-                allValid = false;
-            } else {
-                input.style.borderColor = '';
-                items.push({
-                    medicine_id: input.getAttribute('data-medicine-id'),
-                    quantity: qty
-                });
-            }
-        });
-        
-        if (!allValid) {
-            showToast('Invalid Input', 'Please enter valid quantities for all items', 'warning');
-            return;
-        }
-        
-        try {
-            const response = await fetch('process-alert.php', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json'
-                },
-                body: JSON.stringify({
-                    action: 'restock_batch',
-                    items: items
-                }),
-                credentials: 'include'
-            });
-
-            const result = await response.json();
-
-            if (result.success) {
-                showToast('Success', `${result.updated_count || items.length} medicines restocked successfully`, 'success');
-                window.closeBatchModal();
-                setTimeout(() => location.reload(), 1500);
-            } else {
-                showToast('Error', result.error || 'Failed to process restock', 'error');
-            }
-        } catch (error) {
-            showToast('Error', error.message, 'error');
+            showToast('Error', 'Network error: ' + error.message, 'error');
+            console.error('Restock exception:', error);
         }
     };
 

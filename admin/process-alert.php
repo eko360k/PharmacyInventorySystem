@@ -78,17 +78,36 @@ try {
         // Update inventory in database
         $update_result = $fn->updateStock($medicine_id, $new_quantity);
 
-        if (!$update_result) {
+        if (!$update_result || (is_array($update_result) && !$update_result['success'])) {
             throw new Exception('Failed to update inventory');
         }
 
-        // Record stock movement
+        // Record stock movement for audit trail
         $movement_result = $fn->recordStockMovement(
             $medicine_id,
-            'restock',
+            'purchase',
             $restock_quantity,
             null
         );
+
+        if (!$movement_result || (is_array($movement_result) && !$movement_result['success'])) {
+            throw new Exception('Failed to record stock movement');
+        }
+
+        // ✅ RECORD RESTOCK IN DEDICATED RESTOCKS TABLE
+        $user_id = $_SESSION['user_id'] ?? null;
+        $restock_record = $fn->recordRestock(
+            $medicine_id,
+            $restock_quantity,
+            $current_qty,
+            $new_quantity,
+            $user_id,
+            null
+        );
+
+        if (!$restock_record || (is_array($restock_record) && !$restock_record['success'])) {
+            throw new Exception('Failed to record restock: ' . (isset($restock_record['error']) ? $restock_record['error'] : 'Unknown error'));
+        }
 
         // Auto-resolve low stock alert if stock is now adequate
         if ($new_quantity > intval($inventory['reorder_level'])) {
@@ -112,110 +131,6 @@ try {
             'restock_quantity' => $restock_quantity,
             'new_quantity' => $new_quantity
         ]);
-        exit;
-    }
-
-    // ============================================
-    // RESTOCK BATCH (MULTIPLE ITEMS)
-    // ============================================
-    elseif ($action === 'restock_batch') {
-        if (!isset($data['items']) || !is_array($data['items'])) {
-            throw new Exception('Items array is required');
-        }
-
-        $items = $data['items'];
-        
-        if (empty($items)) {
-            throw new Exception('No items provided for restock');
-        }
-
-        $updated_count = 0;
-        $errors = [];
-        $details = [];
-
-        foreach ($items as $item) {
-            try {
-                $medicine_id = intval($item['medicine_id'] ?? 0);
-                $restock_quantity = intval($item['quantity'] ?? 0);
-
-                if ($medicine_id <= 0 || $restock_quantity <= 0) {
-                    $errors[] = "Invalid medicine ID or quantity for item";
-                    continue;
-                }
-
-                // Get medicine
-                $medicine = $fn->getMedicineById($medicine_id);
-                if (!$medicine) {
-                    $errors[] = "Medicine ID $medicine_id not found";
-                    continue;
-                }
-
-                // Get current inventory
-                $inventory = $fn->getInventoryByMedicineId($medicine_id);
-                if (!$inventory) {
-                    $errors[] = "Inventory not found for {$medicine['name']}";
-                    continue;
-                }
-
-                // Calculate new quantity
-                $current_qty = intval($inventory['quantity']);
-                $new_quantity = $current_qty + $restock_quantity;
-
-                // Update inventory
-                $update_result = $fn->updateStock($medicine_id, $new_quantity);
-
-                if (!$update_result) {
-                    $errors[] = "Failed to update {$medicine['name']}";
-                    continue;
-                }
-
-                // Record stock movement
-                $fn->recordStockMovement(
-                    $medicine_id,
-                    'restock',
-                    $restock_quantity,
-                    null
-                );
-
-                // Auto-resolve low stock alert
-                if ($new_quantity > intval($inventory['reorder_level'])) {
-                    $alerts_result = $fn->query(
-                        "SELECT alert_id FROM alerts WHERE medicine_id = ? AND alert_type = 'low_stock' AND is_resolved = 0",
-                        [$medicine_id]
-                    );
-                    
-                    while ($alert = $fn->fetch($alerts_result)) {
-                        $fn->resolveAlert($alert['alert_id']);
-                    }
-                }
-
-                $updated_count++;
-                $details[] = [
-                    'medicine_name' => $medicine['name'],
-                    'previous_qty' => $current_qty,
-                    'restock_qty' => $restock_quantity,
-                    'new_qty' => $new_quantity
-                ];
-
-            } catch (Exception $e) {
-                $errors[] = $e->getMessage();
-            }
-        }
-
-        $response = [
-            'success' => true,
-            'updated_count' => $updated_count,
-            'total_items' => count($items),
-            'message' => "Successfully restocked $updated_count of " . count($items) . " items",
-            'details' => $details
-        ];
-
-        if (!empty($errors)) {
-            $response['warnings'] = $errors;
-        }
-
-        http_response_code(200);
-        echo json_encode($response);
         exit;
     }
 
@@ -253,210 +168,6 @@ try {
 } catch (Exception $e) {
     http_response_code(400);
     echo json_encode(['success' => false, 'error' => $e->getMessage()]);
-}
-
-exit;
-?>
-
-
-try {
-    $action = $data['action'];
-
-    // ============================================
-    // RESTOCK SINGLE MEDICINE WITH USER INPUT
-    // ============================================
-    if ($action === 'restock_single') {
-        if (!isset($data['medicine_id']) || !isset($data['quantity'])) {
-            throw new Exception('Medicine ID and quantity are required');
-        }
-
-        $medicine_id = intval($data['medicine_id']);
-        $restock_qty = intval($data['quantity']);
-
-        // Validate quantity
-        if ($restock_qty <= 0) {
-            throw new Exception('Quantity must be greater than 0');
-        }
-
-        // Get medicine and inventory info
-        $medicine = $fn->getMedicineById($medicine_id);
-        if (!$medicine) {
-            throw new Exception('Medicine not found');
-        }
-
-        $inventory = $fn->getInventoryByMedicineId($medicine_id);
-        if (!$inventory) {
-            throw new Exception('Inventory record not found');
-        }
-
-        $previous_qty = $inventory['quantity'];
-        $new_qty = $previous_qty + $restock_qty;
-
-        // Update inventory with new quantity
-        $update_result = $fn->updateStock($medicine_id, $new_qty);
-        if (!$update_result['success']) {
-            throw new Exception('Failed to update inventory: ' . $update_result['error']);
-        }
-
-        // Record stock movement for audit trail
-        $movement_result = $fn->recordStockMovement(
-            $medicine_id,
-            'purchase',
-            $restock_qty,
-            null
-        );
-
-        if (!$movement_result['success']) {
-            throw new Exception('Failed to record stock movement: ' . $movement_result['error']);
-        }
-
-        // Auto-resolve low stock alert if applicable
-        if ($new_qty > $inventory['reorder_level']) {
-            $resolve_query = "
-                UPDATE alerts 
-                SET is_resolved = 1, resolved_at = NOW()
-                WHERE medicine_id = ? 
-                AND alert_type = 'low_stock' 
-                AND is_resolved = 0
-            ";
-            $fn->query($resolve_query, [(string)$medicine_id]);
-        }
-
-        http_response_code(200);
-        echo json_encode([
-            'success' => true,
-            'message' => "Successfully restocked {$medicine['name']}",
-            'medicine_id' => $medicine_id,
-            'medicine_name' => $medicine['name'],
-            'previous_qty' => $previous_qty,
-            'restock_qty' => $restock_qty,
-            'new_qty' => $new_qty
-        ]);
-        exit;
-    }
-
-    // ============================================
-    // RESTOCK BATCH (MULTIPLE ITEMS)
-    // ============================================
-    elseif ($action === 'restock_batch') {
-        if (!isset($data['items']) || !is_array($data['items'])) {
-            throw new Exception('Items array is required');
-        }
-
-        $items = $data['items'];
-        if (empty($items)) {
-            throw new Exception('At least one item must be provided');
-        }
-
-        $updated_count = 0;
-        $warning_count = 0;
-        $details = [];
-        $warnings = [];
-
-        foreach ($items as $item) {
-            if (!isset($item['medicine_id']) || !isset($item['quantity'])) {
-                $warning_count++;
-                $warnings[] = 'Skipped item: medicine_id or quantity missing';
-                continue;
-            }
-
-            $medicine_id = intval($item['medicine_id']);
-            $restock_qty = intval($item['quantity']);
-
-            // Validate quantity
-            if ($restock_qty <= 0) {
-                $warning_count++;
-                $warnings[] = "Skipped medicine ID {$medicine_id}: quantity must be greater than 0";
-                continue;
-            }
-
-            // Get medicine and inventory info
-            $medicine = $fn->getMedicineById($medicine_id);
-            if (!$medicine) {
-                $warning_count++;
-                $warnings[] = "Skipped medicine ID {$medicine_id}: medicine not found";
-                continue;
-            }
-
-            $inventory = $fn->getInventoryByMedicineId($medicine_id);
-            if (!$inventory) {
-                $warning_count++;
-                $warnings[] = "Skipped {$medicine['name']}: inventory record not found";
-                continue;
-            }
-
-            $previous_qty = $inventory['quantity'];
-            $new_qty = $previous_qty + $restock_qty;
-
-            // Update inventory
-            $update_result = $fn->updateStock($medicine_id, $new_qty);
-            if (!$update_result['success']) {
-                $warning_count++;
-                $warnings[] = "Failed to update {$medicine['name']}: " . $update_result['error'];
-                continue;
-            }
-
-            // Record stock movement
-            $movement_result = $fn->recordStockMovement(
-                $medicine_id,
-                'purchase',
-                $restock_qty,
-                null
-            );
-
-            if (!$movement_result['success']) {
-                $warning_count++;
-                $warnings[] = "Failed to record movement for {$medicine['name']}: " . $movement_result['error'];
-                continue;
-            }
-
-            // Auto-resolve low stock alert if applicable
-            if ($new_qty > $inventory['reorder_level']) {
-                $resolve_query = "
-                    UPDATE alerts 
-                    SET is_resolved = 1, resolved_at = NOW()
-                    WHERE medicine_id = ? 
-                    AND alert_type = 'low_stock' 
-                    AND is_resolved = 0
-                ";
-                $fn->query($resolve_query, [(string)$medicine_id]);
-            }
-
-            $updated_count++;
-            $details[] = [
-                'medicine_id' => $medicine_id,
-                'medicine_name' => $medicine['name'],
-                'previous_qty' => $previous_qty,
-                'restock_qty' => $restock_qty,
-                'new_qty' => $new_qty
-            ];
-        }
-
-        http_response_code(200);
-        echo json_encode([
-            'success' => true,
-            'message' => "Restocked {$updated_count} medicines" . ($warning_count > 0 ? " ({$warning_count} warnings)" : ''),
-            'updated_count' => $updated_count,
-            'warning_count' => $warning_count,
-            'details' => $details,
-            'warnings' => $warnings
-        ]);
-        exit;
-    }
-
-    // ============================================
-    // INVALID ACTION
-    // ============================================
-    else {
-        throw new Exception("Unknown action: {$action}");
-    }
-
-} catch (Exception $e) {
-    http_response_code(400);
-    echo json_encode([
-        'success' => false,
-        'error' => $e->getMessage()
-    ]);
 }
 
 exit;
