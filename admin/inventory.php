@@ -29,16 +29,23 @@ $baseQuery = "
     LEFT JOIN inventory i ON m.medicine_id = i.medicine_id
     LEFT JOIN (
         SELECT 
-            medicine_id,
-            SUM(CASE WHEN batch_status != 'sold_out' THEN batch_quantity ELSE 0 END) as total_active_qty,
-            COUNT(CASE WHEN batch_status = 'active' THEN 1 END) as active_batch_count,
-            COUNT(CASE WHEN batch_status = 'expired' THEN 1 END) as expired_batch_count,
-            COUNT(CASE WHEN batch_status = 'sold_out' THEN 1 END) as sold_out_batch_count,
-            MIN(CASE WHEN batch_status != 'sold_out' THEN expiry_date ELSE NULL END) as earliest_active_expiry,
-            COUNT(DISTINCT batch_id) as total_batches,
-            MIN(DATEDIFF(expiry_date, CURDATE())) as min_days_to_expiry
-        FROM batches_inventory
-        GROUP BY medicine_id
+            bi.medicine_id,
+            SUM(CASE WHEN bi.batch_status != 'sold_out' THEN bi.batch_quantity ELSE 0 END) as total_batch_qty,
+            SUM(COALESCE(si_summary.qty_sold, 0)) as total_qty_sold,
+            SUM(CASE WHEN bi.batch_status != 'sold_out' THEN bi.batch_quantity ELSE 0 END) - SUM(COALESCE(si_summary.qty_sold, 0)) as total_active_qty,
+            COUNT(CASE WHEN bi.batch_status = 'active' THEN 1 END) as active_batch_count,
+            COUNT(CASE WHEN bi.batch_status = 'expired' THEN 1 END) as expired_batch_count,
+            COUNT(CASE WHEN bi.batch_status = 'sold_out' THEN 1 END) as sold_out_batch_count,
+            MIN(CASE WHEN bi.batch_status != 'sold_out' THEN bi.expiry_date ELSE NULL END) as earliest_active_expiry,
+            COUNT(DISTINCT bi.batch_id) as total_batches,
+            MIN(DATEDIFF(bi.expiry_date, CURDATE())) as min_days_to_expiry
+        FROM batches_inventory bi
+        LEFT JOIN (
+            SELECT medicine_id, SUM(quantity) as qty_sold
+            FROM sale_items
+            GROUP BY medicine_id
+        ) si_summary ON bi.medicine_id = si_summary.medicine_id
+        GROUP BY bi.medicine_id
     ) bd ON m.medicine_id = bd.medicine_id
     WHERE 1=1
 ";
@@ -99,17 +106,18 @@ $statsQuery = "
         SELECT
             m.medicine_id,
             COALESCE(i.reorder_level, 0) as reorder_level,
-            COALESCE(b.total_active_qty, i.quantity, 0) as total_active_qty,
+            COALESCE(b.total_active_qty, 0) as total_active_qty,
             COALESCE(b.min_days_to_expiry, 999) as min_days_to_expiry
         FROM medicines m
         LEFT JOIN inventory i ON m.medicine_id = i.medicine_id
         LEFT JOIN (
             SELECT 
-                medicine_id,
-                SUM(CASE WHEN batch_status != 'sold_out' THEN batch_quantity ELSE 0 END) as total_active_qty,
-                MIN(DATEDIFF(expiry_date, CURDATE())) as min_days_to_expiry
-            FROM batches_inventory
-            GROUP BY medicine_id
+                bi.medicine_id,
+                SUM(CASE WHEN bi.batch_status != 'sold_out' THEN bi.batch_quantity ELSE 0 END) - COALESCE(SUM(si.quantity), 0) as total_active_qty,
+                MIN(DATEDIFF(bi.expiry_date, CURDATE())) as min_days_to_expiry
+            FROM batches_inventory bi
+            LEFT JOIN sale_items si ON bi.medicine_id = si.medicine_id
+            GROUP BY bi.medicine_id
         ) b ON m.medicine_id = b.medicine_id
     ) stats
 ";
